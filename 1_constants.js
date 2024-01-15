@@ -50,6 +50,7 @@ let followersColor = '#ff0000';
 let viewsColor = '#437aff';
 let readsColor = '#34aa45';
 let followersPerViewColor = '#ff00ff';
+let storyColor = '#ff8000';
 
 
 // The rest you don't need to edit.
@@ -61,3 +62,4 @@ let username = window.location.href.match(/@([^\/]*)(\/|$)/)[1]; // From '@' til
 const millisecondsInDay = 24 * 60 * 60 * 1000;
 let storyStats = new Map();
 let annotationIndex = 0;
+let maxDaysToMarkDays = 50;

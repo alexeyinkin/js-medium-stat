@@ -6,6 +6,7 @@ await loadScripts();
 
 let audienceStats = await loadAudienceStats();
 let viewsAndReads = await loadViewsAndReads();
+let storiesStats = await loadStoriesStats();
 
 let views = extractViews(viewsAndReads);
 let reads = extractReads(viewsAndReads);

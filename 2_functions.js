@@ -163,6 +163,55 @@ async function loadMonthViewsAndReads(year, month) {
 	return result;
 }
 
+async function loadStoriesStats() {
+    const result = new Map();
+    let after = '';
+
+    while (true) {
+        const arr = await loadStoriesStatsPage(after);
+        const postsConnection = arr[0].data.user.postsConnection;
+        const pageInfo = postsConnection.pageInfo;
+        const edges = postsConnection.edges;
+
+        for (const edge of edges) {
+            result.set(edge.node.id, edge.node);
+        }
+
+        if (!pageInfo.hasNextPage) {
+            break;
+        }
+
+        after = pageInfo.endCursor;
+        await delay(1000);
+    }
+
+    return result;
+}
+
+async function loadStoriesStatsPage(after) {
+    console.log(`Loading stories lifetime stats after: ${after}`);
+
+	const response = await fetch("https://medium.com/_/graphql", {
+	    "headers": {
+    	    "content-type": "application/json",
+    	},
+    	"body": `[{
+    		"operationName": "LifetimeStoriesStatsQuery",
+    		"variables": {
+    			"username": "${username}",
+    			"first": 10,
+    			"after": "${after.replace(/"/g, '\\"')}",
+    			"orderBy": {"publishedAt": "DESC"},
+    			"filter": {"published": true}
+    		},
+    		"query": "query LifetimeStoriesStatsQuery($username: ID!, $first: Int!, $after: String!, $orderBy: UserPostsOrderBy, $filter: UserPostsFilter) {\\n  user(username: $username) {\\n    id\\n    postsConnection(\\n      first: $first\\n      after: $after\\n      orderBy: $orderBy\\n      filter: $filter\\n    ) {\\n      edges {\\n        node {\\n          ...LifetimeStoriesStats_post\\n          __typename\\n        }\\n        __typename\\n      }\\n      pageInfo {\\n        endCursor\\n        hasNextPage\\n        __typename\\n      }\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\\nfragment LifetimeStoriesStats_post on Post {\\n  id\\n  ...StoriesStatsTable_post\\n  ...MobileStoriesStatsTable_post\\n  __typename\\n}\\n\\nfragment StoriesStatsTable_post on Post {\\n  ...StoriesStatsTableRow_post\\n  __typename\\n  id\\n}\\n\\nfragment StoriesStatsTableRow_post on Post {\\n  id\\n  ...TablePostInfos_post\\n  firstPublishedAt\\n  milestones {\\n    boostedAt\\n    __typename\\n  }\\n  isLocked\\n  totalStats {\\n    views\\n    reads\\n    __typename\\n  }\\n  earnings {\\n    total {\\n      currencyCode\\n      nanos\\n      units\\n      __typename\\n    }\\n    __typename\\n  }\\n  __typename\\n}\\n\\nfragment TablePostInfos_post on Post {\\n  id\\n  title\\n  firstPublishedAt\\n  readingTime\\n  isLocked\\n  visibility\\n  ...usePostUrl_post\\n  ...Star_post\\n  __typename\\n}\\n\\nfragment usePostUrl_post on Post {\\n  id\\n  creator {\\n    ...userUrl_user\\n    __typename\\n    id\\n  }\\n  collection {\\n    id\\n    domain\\n    slug\\n    __typename\\n  }\\n  isSeries\\n  mediumUrl\\n  sequence {\\n    slug\\n    __typename\\n  }\\n  uniqueSlug\\n  __typename\\n}\\n\\nfragment userUrl_user on User {\\n  __typename\\n  id\\n  customDomainState {\\n    live {\\n      domain\\n      __typename\\n    }\\n    __typename\\n  }\\n  hasSubdomain\\n  username\\n}\\n\\nfragment Star_post on Post {\\n  id\\n  creator {\\n    id\\n    __typename\\n  }\\n  __typename\\n}\\n\\nfragment MobileStoriesStatsTable_post on Post {\\n  id\\n  ...TablePostInfos_post\\n  firstPublishedAt\\n  milestones {\\n    boostedAt\\n    __typename\\n  }\\n  isLocked\\n  totalStats {\\n    reads\\n    views\\n    __typename\\n  }\\n  earnings {\\n    total {\\n      currencyCode\\n      nanos\\n      units\\n      __typename\\n    }\\n    __typename\\n  }\\n  __typename\\n}\\n"
+    	}]`,
+	    "method": "POST",
+	});
+
+    return await response.json();
+}
+
 async function loadStoryStats(postId) {
 	const result = new Map();
 	const now = new Date();
@@ -307,8 +356,39 @@ function getLastKeyWhereLess(map, threshold) {
     return result;
 }
 
+function makeOverallAnnotations() {
+    return {
+        ...makeStoriesAnnotations(),
+        ...makeLastViewsAnnotations(),
+        ...makeBoostAnnotations(),
+        ...makeManualEventsAnnotations(),
+    };
+}
+
+function makeStoriesAnnotations() {
+    const result = {};
+
+    for (const [id, st] of storiesStats) {
+        result[annotationIndex++ + ''] = makeVerticalAnnotation(new Date(st.firstPublishedAt), storyColor + '60');
+    }
+
+    return result;
+}
+
 function makeLastViewsAnnotations() {
     return makeVerticalAnnotations(getLastViewsEvents());
+}
+
+function makeBoostAnnotations() {
+    const result = new Map();
+
+    for (const [id, st] of storiesStats) {
+        for (const timestamp of st.milestones.boostedAt) {
+            result.set(new Date(timestamp), 'Boost');
+        }
+    }
+
+    return makeVerticalAnnotations(result);
 }
 
 function makeManualEventsAnnotations() {
@@ -364,12 +444,12 @@ function makeDataset(map, color, fillColor, title) {
     }
 }
 
-function makeVerticalAnnotation(date, text) {
+function makeVerticalAnnotation(date, color, text) {
     return {
         type: 'line',
-        borderColor: 'black',
+        borderColor: color,
         borderWidth: 1,
-        label: {
+        label: text === undefined ? undefined : {
             display: true,
             color: '#fff',
             backgroundColor: 'rgb(0, 0, 0, .75)',
@@ -393,7 +473,7 @@ function makeVerticalAnnotations(events) {
     const result = {};
 
     events.forEach((title, timestamp) => {
-        result[annotationIndex++ + ''] = makeVerticalAnnotation(new Date(timestamp), title);
+        result[annotationIndex++ + ''] = makeVerticalAnnotation(new Date(timestamp), 'black', title);
     });
 
     return result;
@@ -462,7 +542,7 @@ async function plotFollowers() {
     plotAndDownload(
         [getFollowersDataset()],
         true,
-        {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
+        makeOverallAnnotations(),
     );
 }
 
@@ -470,7 +550,7 @@ async function plotViews() {
     plotAndDownload(
         [getViewsDataset()],
         true,
-        {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
+        makeOverallAnnotations(),
     );
 }
 
@@ -478,7 +558,7 @@ async function plotViewsWeekAverage() {
     plotAndDownload(
         [getViewsWeekAverageDataset()],
         true,
-        {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
+        makeOverallAnnotations(),
     );
 }
 
@@ -486,7 +566,7 @@ async function plotReads() {
     plotAndDownload(
         [getReadsDataset()],
         true,
-        {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
+        makeOverallAnnotations(),
     );
 }
 
@@ -494,7 +574,7 @@ async function plotReadsWeekAverage() {
     plotAndDownload(
         [getReadsWeekAverageDataset()],
         true,
-        {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
+        makeOverallAnnotations(),
     );
 }
 
@@ -502,7 +582,7 @@ async function plotViewsAndReads() {
     plotAndDownload(
         [getReadsDataset(), getViewsDataset()],
         true,
-        {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
+        makeOverallAnnotations(),
     );
 }
 
@@ -510,7 +590,7 @@ async function plotViewsAndReadsWeekAverage() {
     plotAndDownload(
         [getReadsWeekAverageDataset(), getViewsWeekAverageDataset()],
         true,
-        {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
+        makeOverallAnnotations(),
     );
 }
 
@@ -563,16 +643,43 @@ function getReadsWeekAverageDataset() {
     );
 }
 
-async function plotStoryViews(postId, title, events) {
+async function plotStoryViews(postId, events) {
+    const st = storiesStats.get(postId);
+    if (st === undefined) {
+        throw new Error('Story not found: ' + postId);
+    }
+
     if (!storyStats.has(postId)) {
         storyStats.set(postId, await loadStoryStats(postId));
     }
 
+    let eventsClone = new Map(events || []);
+
+    for (const timestamp of st.milestones.boostedAt) {
+        eventsClone.set(new Date(timestamp), 'Boost');
+    }
+
     plotAndDownload(
-        [getStoryViewsDataset(postId, title)],
+        [getStoryViewsDataset(postId, st['title'])],
         false,
-        makeVerticalAnnotations(events || {}),
+        makeVerticalAnnotations(eventsClone),
+        !shouldMarkDays(st['firstPublishedAt']) ? undefined : {
+            x: {
+                type: 'time',
+                time: {
+                    unit: 'day',
+                }
+            },
+        },
     );
+}
+
+function shouldMarkDays(timestamp) {
+    if (((new Date()).getTime() - timestamp) / 1000 / 60 / 60 / 24 < maxDaysToMarkDays) {
+        return true;
+    }
+
+    return false;
 }
 
 function getStoryViewsDataset(postId, title) {
