@@ -100,6 +100,30 @@ async function loadAudienceStats() {
     return Papa.parse(text, { header: true })['data'].filter(e => e['period_end'] !== undefined);
 }
 
+async function loadViewsAndReads() {
+	const result = new Map();
+	const now = new Date();
+	const year = now.getUTCFullYear();
+	let month = now.getUTCMonth();
+
+	while (true) {
+		const monthResult = await loadMonthViewsAndReads(year, month);
+		console.log(monthResult);
+
+		monthResult.forEach((value, key) => {
+		    result.set(key, value);
+		});
+
+		month--;
+
+		if (monthResult.size == 0) break;
+		await delay(1000);
+	}
+
+    result.delete(getToday().getTime()); // Today is incomplete, breaks a lot of things.
+    return sortMap(result);
+}
+
 async function loadMonthViewsAndReads(year, month) {
     const startDate = new Date(Date.UTC(year, month));
 	const startTime = startDate.getTime();
@@ -139,14 +163,14 @@ async function loadMonthViewsAndReads(year, month) {
 	return result;
 }
 
-async function loadViewsAndReads() {
+async function loadStoryStats(postId) {
 	const result = new Map();
 	const now = new Date();
 	const year = now.getUTCFullYear();
 	let month = now.getUTCMonth();
 
 	while (true) {
-		const monthResult = await loadMonthViewsAndReads(year, month);
+		const monthResult = await loadMonthStoryStats(postId, year, month);
 		console.log(monthResult);
 
 		monthResult.forEach((value, key) => {
@@ -198,30 +222,6 @@ async function loadMonthStoryStats(postId, year, month) {
 	}
 
 	return result;
-}
-
-async function loadStoryStats(postId) {
-	const result = new Map();
-	const now = new Date();
-	const year = now.getUTCFullYear();
-	let month = now.getUTCMonth();
-
-	while (true) {
-		const monthResult = await loadMonthStoryStats(postId, year, month);
-		console.log(monthResult);
-
-		monthResult.forEach((value, key) => {
-		    result.set(key, value);
-		});
-
-		month--;
-
-		if (monthResult.size == 0) break;
-		await delay(1000);
-	}
-
-    result.delete(getToday().getTime()); // Today is incomplete, breaks a lot of things.
-    return sortMap(result);
 }
 
 function mergeManualAndLoadedFollowers() {

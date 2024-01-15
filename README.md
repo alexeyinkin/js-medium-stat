@@ -24,7 +24,7 @@ Use this at your risk.
 The loading of overall data is separate from plotting.
 Once you load the data, plotting does not load new data.
 When plotting statistics for an individual article, the data is loaded on the first plot
-and not subsequent ones, so when you change scale, colors, and other settings and re-plot,
+and not the subsequent ones, so when you change scale, colors, and other settings and re-plot,
 the loaded data is reused.
 
 For this reason, try to keep the browser tab open until you no longer need the data.
@@ -32,7 +32,7 @@ For this reason, try to keep the browser tab open until you no longer need the d
 ## Chart Size
 
 You can change the aspect ratio in [1_constants.js](1_constants.js)
-by changing width and height. However, these are not the absolute size.
+by changing `width` and `height`. However, these are not the absolute size.
 
 In my test, the absolute size is determined by the browser window.
 You can get precise width by turing on "Responsive Design Mode" (Firefox) or "Device Toolbar" (Chrome),
