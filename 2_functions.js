@@ -608,7 +608,7 @@ function getViewsDataset() {
         replaceZeroValues(views, 1),
         viewsColor,
         viewsColor + '80',
-        'Views',
+        'Daily Views',
     );
 }
 
@@ -617,7 +617,7 @@ function getViewsWeekAverageDataset() {
         replaceZeroValues(weekAverage(views), 1),
         viewsColor,
         viewsColor + '80',
-        'Views Week Average',
+        'Daily Views, Weekly Average',
     );
 }
 
@@ -626,7 +626,7 @@ function getReadsDataset() {
         replaceZeroValues(reads, 1),
         readsColor,
         readsColor + '80',
-        'Reads',
+        'Daily Reads',
     );
 }
 
@@ -639,7 +639,7 @@ function getReadsWeekAverageDataset() {
         replaceZeroValues(weekAverage(reads), minViews),
         readsColor,
         readsColor + '80',
-        'Reads Week Average',
+        'Daily Reads, Weekly Average',
     );
 }
 

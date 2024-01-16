@@ -50,7 +50,7 @@ let followersColor = '#ff0000';
 let viewsColor = '#437aff';
 let readsColor = '#34aa45';
 let followersPerViewColor = '#ff00ff';
-let storyColor = '#ff8000';
+let storyColor = '#000000';
 
 
 // The rest you don't need to edit.
