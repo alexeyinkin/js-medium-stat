@@ -635,7 +635,7 @@ function makeVerticalAnnotations(events) {
     return result;
 }
 
-async function plotAndDownload(datasets, log, annotations, extraScales) {
+async function plotAndDownload(datasets, filename, log, annotations, extraScales) {
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
@@ -684,7 +684,7 @@ async function plotAndDownload(datasets, log, annotations, extraScales) {
     const imageUrl = canvas.toDataURL('image/png');
     const downloadLink = document.createElement('a');
     downloadLink.href = imageUrl;
-    downloadLink.download = 'chart.png';
+    downloadLink.download = `${filename}.png`;
 
     document.body.appendChild(downloadLink);
     downloadLink.click();
@@ -698,6 +698,7 @@ async function plotAndDownload(datasets, log, annotations, extraScales) {
 async function plotFollowers() {
     await plotAndDownload(
         [getFollowersDataset()],
+        'followers',
         true,
         makeOverallAnnotations(),
     );
@@ -706,6 +707,7 @@ async function plotFollowers() {
 async function plotViews() {
     await plotAndDownload(
         [getViewsDataset()],
+        'views',
         true,
         makeOverallAnnotations(),
     );
@@ -714,6 +716,7 @@ async function plotViews() {
 async function plotViewsWeekAverage() {
     await plotAndDownload(
         [getViewsWeekAverageDataset()],
+        'views_wa',
         true,
         makeOverallAnnotations(),
     );
@@ -722,6 +725,7 @@ async function plotViewsWeekAverage() {
 async function plotReads() {
     await plotAndDownload(
         [getReadsDataset()],
+        'reads',
         true,
         makeOverallAnnotations(),
     );
@@ -730,6 +734,7 @@ async function plotReads() {
 async function plotReadsWeekAverage() {
     await plotAndDownload(
         [getReadsWeekAverageDataset()],
+        'reads_wa',
         true,
         makeOverallAnnotations(),
     );
@@ -738,6 +743,7 @@ async function plotReadsWeekAverage() {
 async function plotViewsAndReads() {
     await plotAndDownload(
         [getReadsDataset(), getViewsDataset()],
+        'views_reads',
         true,
         makeOverallAnnotations(),
     );
@@ -746,6 +752,7 @@ async function plotViewsAndReads() {
 async function plotViewsAndReadsWeekAverage() {
     await plotAndDownload(
         [getReadsWeekAverageDataset(), getViewsWeekAverageDataset()],
+        'views_reads_wa',
         true,
         makeOverallAnnotations(),
     );
@@ -805,6 +812,7 @@ async function plotStoryViews(postId, events) {
 
     await plotAndDownload(
         [getStoryViewsDataset(postId)],
+        `views_${postId}`,
         false,
         makeVerticalAnnotations(mergeManualAndLoadedStoryEvents(postId, events)),
         getStoryExtraAxes(postId),
@@ -875,8 +883,9 @@ function getStoryViewsDataset(postId) {
 async function plotFollowersPerView() {
     await plotAndDownload(
         [getFollowersPerViewDataset()],
+        'followers_per_view',
         false,
-        {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
+        makeOverallAnnotations(),
     );
 }
 
@@ -894,8 +903,9 @@ async function plotFollowersAndPerView() {
 
     await plotAndDownload(
         [getFollowersPerViewDataset(), followersDataset],
+        'followers_and_per_view',
         false,
-        {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
+        makeOverallAnnotations(),
         {y1: y1Scale},
     );
 }
@@ -946,6 +956,7 @@ async function plotStoryFollowersPerView(postId, events) {
 
     await plotAndDownload(
         [getStoryFollowersPerViewDataset(postId)],
+        `followers_per_view_${postId}`,
         false,
         makeVerticalAnnotations(mergeManualAndLoadedStoryEvents(postId, events)),
         getStoryExtraAxes(postId),
@@ -965,6 +976,7 @@ async function plotStoryViewsAndFollowersPerView(postId, events) {
 
     await plotAndDownload(
         [getStoryViewsDataset(postId), followersDataset],
+        `views_followers_per_view_${postId}`,
         false,
         makeVerticalAnnotations(mergeManualAndLoadedStoryEvents(postId, events)),
         {y1: y1Scale, ...getStoryExtraAxes(postId)},
@@ -1012,6 +1024,7 @@ async function plotStoriesReadRatioBubbles() {
 
     await plotAndDownload(
         [dataset],
+        'read_ratio_bubbles',
         false,
         makeBubbleLabelAnnotations(dataset.data),
     );
@@ -1045,6 +1058,7 @@ async function plotStoriesFollowersBubbles() {
 
     await plotAndDownload(
         [dataset],
+        'followers_bubbles',
         false,
         makeBubbleLabelAnnotations(dataset.data),
     );
@@ -1139,4 +1153,14 @@ function makeLabelAnnotation(date, value, text) {
             size: 6,
         }
     };
+}
+
+function dumpStoryIdsAndTitles() {
+    let lines = [];
+
+    for (const [id, st] of storiesStats) {
+        lines.push(`${id}\t${st.title}`);
+    }
+
+    return lines.join('\n') + '\n';
 }

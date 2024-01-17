@@ -3,6 +3,8 @@
 
 // Plot specific charts you want:
 
+plotStoriesReadRatioBubbles();
+
 plotViews();
 plotViewsWeekAverage();
 
@@ -22,5 +24,3 @@ plotStoryViews('a3a2ccc7a942', new Map([[new Date('2024-01-12'), 'Newsletter']])
 plotStoryFollowersPerView('e13f88ea5461');
 
 plotStoryViewsAndFollowersPerView('e13f88ea5461')
-
-plotStoriesReadRatioBubbles();
