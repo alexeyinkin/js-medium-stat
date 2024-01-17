@@ -60,6 +60,13 @@ let storyColor = '#000000';
 let username = window.location.href.match(/@([^\/]*)(\/|$)/)[1]; // From '@' till '/' or end.
 
 const millisecondsInDay = 24 * 60 * 60 * 1000;
-let storyStats = new Map();
+
+let oldStoryStats = new Map();
+let newStoryStats = new Map();
+
 let annotationIndex = 0;
 let maxDaysToMarkDays = 50;
+let followersPerViewMultiplier = 1000;
+
+let maxBubbleTitleLength = 40;
+let maxBubbleRadius = 50;

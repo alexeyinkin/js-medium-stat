@@ -90,6 +90,10 @@ function replaceZeroValues(map, replacement) {
     return result;
 }
 
+function shortenString(str, maxLength) {
+    return str.length > maxLength ? str.substring(0, maxLength - 3) + '…' : str;
+}
+
 
 // Data loading functions.
 
@@ -107,17 +111,25 @@ async function loadViewsAndReads() {
 	let month = now.getUTCMonth();
 
 	while (true) {
-		const monthResult = await loadMonthViewsAndReads(year, month);
+		const monthResult = await cachedOrLoad(
+		    'MonthlyStatsAndChartQuery',
+		    year,
+		    month,
+		    () => loadMonthViewsAndReads(year, month),
+        );
 		console.log(monthResult);
 
-		monthResult.forEach((value, key) => {
-		    result.set(key, value);
-		});
+        let monthResultSize = 0;
+        for (const key in monthResult) {
+            result.set(parseInt(key), monthResult[key]);
+            monthResultSize++;
+        }
+
+		if (monthResultSize == 0) {
+		    break;
+        }
 
 		month--;
-
-		if (monthResult.size == 0) break;
-		await delay(1000);
 	}
 
     result.delete(getToday().getTime()); // Today is incomplete, breaks a lot of things.
@@ -154,10 +166,10 @@ async function loadMonthViewsAndReads(year, month) {
 
 	const arr = await response.json();
 	const points = arr[0].data.user.postsAggregateTimeseriesStats.points;
-	const result = new Map();
+	const result = {};
 
 	for (const point of points) {
-		result.set(point.timestamp, point.stats.total);
+		result[point.timestamp] = point.stats.total;
 	}
 
 	return result;
@@ -212,31 +224,38 @@ async function loadStoriesStatsPage(after) {
     return await response.json();
 }
 
-async function loadStoryStats(postId) {
+// The old statistics format is for December 2022 and earlier.
+async function loadOldStoryStats(postId) {
 	const result = new Map();
-	const now = new Date();
-	const year = now.getUTCFullYear();
-	let month = now.getUTCMonth();
+	const year = 2022;
+	let month = 11; // December
 
 	while (true) {
-		const monthResult = await loadMonthStoryStats(postId, year, month);
+		const monthResult = await cachedOrLoad(
+		    `useStatsPostAnteriorChartDataQuery_${postId}`,
+		    year,
+		    month,
+		    () => loadOldMonthStoryStats(postId, year, month),
+        );
 		console.log(monthResult);
 
-		monthResult.forEach((value, key) => {
-		    result.set(key, value);
-		});
+        let monthResultSize = 0;
+        for (const key in monthResult) {
+            result.set(parseInt(key), monthResult[key]);
+            monthResultSize++;
+        }
+
+		if (monthResultSize == 0) {
+		    break;
+        }
 
 		month--;
-
-		if (monthResult.size == 0) break;
-		await delay(1000);
 	}
 
-    result.delete(getToday().getTime()); // Today is incomplete, breaks a lot of things.
     return sortMap(result);
 }
 
-async function loadMonthStoryStats(postId, year, month) {
+async function loadOldMonthStoryStats(postId, year, month) {
     const startDate = new Date(Date.UTC(year, month));
 	const startTime = startDate.getTime();
 	const endTime = (new Date(Date.UTC(year, month + 1))).getTime();
@@ -244,7 +263,7 @@ async function loadMonthStoryStats(postId, year, month) {
     const effectiveYear = startDate.getUTCFullYear();
     const effectiveMonth = startDate.getUTCMonth();
 
-    console.log(`Loading stats for story ${postId} ${effectiveYear}-${effectiveMonth}, timestamps ${startTime}-${endTime}`);
+    console.log(`Loading old stats for story ${postId} ${effectiveYear}-${effectiveMonth}, timestamps ${startTime}-${endTime}`);
 
 	const response = await fetch("https://medium.com/_/graphql", {
 	    "headers": {
@@ -264,10 +283,91 @@ async function loadMonthStoryStats(postId, year, month) {
 
 	const arr = await response.json();
 	const points = arr[0].data.post.dailyStats;
-	const result = new Map();
+	const result = {};
 
 	for (const point of points) {
-		result.set(point.periodStartedAt, point);
+		result[point.periodStartedAt] = point;
+	}
+
+	return result;
+}
+
+// The new statistics format is for January 2023 and on.
+async function loadNewStoryStats(postId) {
+	const result = new Map();
+	const now = new Date();
+	const year = now.getUTCFullYear();
+	let month = now.getUTCMonth();
+
+	while (true) {
+		const monthResult = await cachedOrLoad(
+		    `useStatsPostNewChartDataQuery_${postId}`,
+		    year,
+		    month,
+		    () => loadNewMonthStoryStats(postId, year, month),
+        );
+		console.log(monthResult);
+
+        let monthResultSize = 0;
+        for (const key in monthResult) {
+            result.set(key, monthResult[key]);
+            monthResultSize++;
+        }
+
+		if (monthResultSize == 0) {
+		    break;
+        }
+
+		month--;
+
+        const effectiveYear = (new Date(Date.UTC(year, month))).getUTCFullYear();
+        if (effectiveYear < 2023) {
+            break;
+        }
+	}
+
+    result.delete(getToday().getTime()); // Today is incomplete, breaks a lot of things.
+    return sortMap(result);
+}
+
+async function loadNewMonthStoryStats(postId, year, month) {
+    const startDate = new Date(Date.UTC(year, month));
+	const startTime = startDate.getTime();
+	const endTime = (new Date(Date.UTC(year, month + 1))).getTime();
+
+    const effectiveYear = startDate.getUTCFullYear();
+    const effectiveMonth = startDate.getUTCMonth();
+
+    console.log(`Loading new stats for story ${postId} ${effectiveYear}-${effectiveMonth}, timestamps ${startTime}-${endTime}`);
+
+	const response = await fetch("https://medium.com/_/graphql", {
+	    "headers": {
+    	    "content-type": "application/json",
+    	},
+    	"body": `[{
+    		"operationName": "useStatsPostNewChartDataQuery",
+    		"variables": {
+    			"postId": "${postId}",
+                "startAt": ${startTime},
+                "endAt": ${endTime},
+                "postStatsDailyBundleInput": {
+                    "postId": "${postId}",
+                    "fromDayStartsAt": ${startTime},
+                    "toDayStartsAt": ${endTime}
+                }
+    		},
+    		"query": "query useStatsPostNewChartDataQuery($postId: ID!, $startAt: Long!, $endAt: Long!, $postStatsDailyBundleInput: PostStatsDailyBundleInput!) {\\n  post(id: $postId) {\\n    id\\n    earnings {\\n      dailyEarnings(startAt: $startAt, endAt: $endAt) {\\n        ...newBucketTimestamps_dailyPostEarning\\n        __typename\\n      }\\n      __typename\\n    }\\n    __typename\\n  }\\n  postStatsDailyBundle(postStatsDailyBundleInput: $postStatsDailyBundleInput) {\\n    buckets {\\n      ...newBucketTimestamps_postStatsDailyBundleBucket\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\\nfragment newBucketTimestamps_dailyPostEarning on DailyPostEarning {\\n  periodStartedAt\\n  amount\\n  __typename\\n}\\n\\nfragment newBucketTimestamps_postStatsDailyBundleBucket on PostStatsDailyBundleBucket {\\n  dayStartsAt\\n  membershipType\\n  readersThatReadCount\\n  readersThatViewedCount\\n  readersThatClappedCount\\n  readersThatRepliedCount\\n  readersThatHighlightedCount\\n  readersThatInitiallyFollowedAuthorFromThisPostCount\\n  __typename\\n}\\n"
+    	}]`,
+	    "method": "POST",
+	});
+
+	const arr = await response.json();
+	const buckets = arr[0].data.postStatsDailyBundle.buckets;
+	const result = {};
+
+	for (const bucket of buckets) {
+	    const key = `${bucket.dayStartsAt}_${bucket.membershipType}`;
+		result[key] = bucket;
 	}
 
 	return result;
@@ -334,7 +434,7 @@ function extractReads(viewsAndReads) {
     return resultWithZeros;
 }
 
-function extractStoryViews(stats) {
+function extractOldStoryViews(stats) {
     const result = new Map();
 
     stats.forEach((value, timestamp) => {
@@ -342,8 +442,20 @@ function extractStoryViews(stats) {
     });
 
     const resultWithZeros = addZerosOnMissingDates(result);
-    resultWithZeros.delete(getToday().getTime()); // Today is incomplete, breaks a lot of things.
     return resultWithZeros;
+}
+
+function extractNewStoryViews(stats) {
+    const result = new Map();
+
+    stats.forEach((value, key) => {
+        const timestamp = value['dayStartsAt'];
+        result.set(timestamp, value['readersThatViewedCount'] + (result.get(timestamp) || 0));
+    });
+
+    const resultWithZeros = addZerosOnMissingDates(result);
+    resultWithZeros.delete(getToday().getTime()); // Today is incomplete, breaks a lot of things.
+    return sortMap(resultWithZeros);
 }
 
 function getLastKeyWhereLess(map, threshold) {
@@ -418,6 +530,50 @@ function getLastViewsEvents() {
     return result;
 }
 
+async function cachedOrLoad(key, year, month, callback) {
+    const date = new Date(Date.UTC(year, month));
+
+    if (!canDateBeCached(date)) {
+        return await callback();
+    }
+
+    const effectiveYear = date.getUTCFullYear();
+    const effectiveMonth = date.getUTCMonth();
+    const fullKey = `stat_${username}_${key}_${effectiveYear}_${effectiveMonth}`;
+
+    const cached = window.localStorage.getItem(fullKey);
+    if (cached !== null) {
+        console.log(`Retrieved from cache: ${fullKey}`);
+        return JSON.parse(cached);
+    }
+
+    const result = await callback();
+    window.localStorage.setItem(fullKey, JSON.stringify(result));
+    console.log(`Stored in cache: ${fullKey}`);
+    await delay(1000); // Avoid abusing the API.
+    return result;
+}
+
+function canDateBeCached(date) {
+    // Allow to cache last month and older if it's 2nd day today.
+    const month = date.getUTCFullYear() * 12 + date.getUTCMonth();
+    const today = getToday();
+    const thisMonth = today.getUTCFullYear() * 12 + today.getUTCMonth();
+
+    if (thisMonth < month) {
+        throw new Error('Must never try to cache the future');
+    }
+
+    if (thisMonth === month) {
+        return false;
+    }
+
+    if (thisMonth - month === 1) {
+        return today.getUTCDate() > 1;
+    }
+
+    return true;
+}
 
 // Plot functions.
 
@@ -505,6 +661,7 @@ async function plotAndDownload(datasets, log, annotations, extraScales) {
             plugins: {
                 annotation: {
                     annotations: annotations,
+                    clip: false,
                 },
             },
             scales: {
@@ -539,7 +696,7 @@ async function plotAndDownload(datasets, log, annotations, extraScales) {
 // Specific plot functions.
 
 async function plotFollowers() {
-    plotAndDownload(
+    await plotAndDownload(
         [getFollowersDataset()],
         true,
         makeOverallAnnotations(),
@@ -547,7 +704,7 @@ async function plotFollowers() {
 }
 
 async function plotViews() {
-    plotAndDownload(
+    await plotAndDownload(
         [getViewsDataset()],
         true,
         makeOverallAnnotations(),
@@ -555,7 +712,7 @@ async function plotViews() {
 }
 
 async function plotViewsWeekAverage() {
-    plotAndDownload(
+    await plotAndDownload(
         [getViewsWeekAverageDataset()],
         true,
         makeOverallAnnotations(),
@@ -563,7 +720,7 @@ async function plotViewsWeekAverage() {
 }
 
 async function plotReads() {
-    plotAndDownload(
+    await plotAndDownload(
         [getReadsDataset()],
         true,
         makeOverallAnnotations(),
@@ -571,7 +728,7 @@ async function plotReads() {
 }
 
 async function plotReadsWeekAverage() {
-    plotAndDownload(
+    await plotAndDownload(
         [getReadsWeekAverageDataset()],
         true,
         makeOverallAnnotations(),
@@ -579,7 +736,7 @@ async function plotReadsWeekAverage() {
 }
 
 async function plotViewsAndReads() {
-    plotAndDownload(
+    await plotAndDownload(
         [getReadsDataset(), getViewsDataset()],
         true,
         makeOverallAnnotations(),
@@ -587,7 +744,7 @@ async function plotViewsAndReads() {
 }
 
 async function plotViewsAndReadsWeekAverage() {
-    plotAndDownload(
+    await plotAndDownload(
         [getReadsWeekAverageDataset(), getViewsWeekAverageDataset()],
         true,
         makeOverallAnnotations(),
@@ -644,34 +801,53 @@ function getReadsWeekAverageDataset() {
 }
 
 async function plotStoryViews(postId, events) {
+    await loadStoryStatsIfNot(postId);
+
+    await plotAndDownload(
+        [getStoryViewsDataset(postId)],
+        false,
+        makeVerticalAnnotations(mergeManualAndLoadedStoryEvents(postId, events)),
+        getStoryExtraAxes(postId),
+    );
+}
+
+async function loadStoryStatsIfNot(postId) {
     const st = storiesStats.get(postId);
     if (st === undefined) {
         throw new Error('Story not found: ' + postId);
     }
 
-    if (!storyStats.has(postId)) {
-        storyStats.set(postId, await loadStoryStats(postId));
+    if (!newStoryStats.has(postId)) {
+        newStoryStats.set(postId, await loadNewStoryStats(postId));
+        oldStoryStats.set(postId, await loadOldStoryStats(postId));
     }
+}
 
-    let eventsClone = new Map(events || []);
+function mergeManualAndLoadedStoryEvents(postId, manualEvents) {
+    const st = storiesStats.get(postId);
+    let result = new Map(manualEvents || []);
 
     for (const timestamp of st.milestones.boostedAt) {
-        eventsClone.set(new Date(timestamp), 'Boost');
+        result.set(new Date(timestamp), 'Boost');
     }
 
-    plotAndDownload(
-        [getStoryViewsDataset(postId, st['title'])],
-        false,
-        makeVerticalAnnotations(eventsClone),
-        !shouldMarkDays(st['firstPublishedAt']) ? undefined : {
-            x: {
-                type: 'time',
-                time: {
-                    unit: 'day',
-                }
-            },
-        },
-    );
+    return result;
+}
+
+function getStoryExtraAxes(postId) {
+    const st = storiesStats.get(postId);
+    const result = {};
+
+    if (shouldMarkDays(st['firstPublishedAt'])) {
+        result['x'] = {
+            type: 'time',
+            time: {
+                unit: 'day',
+            }
+        };
+    }
+
+    return result;
 }
 
 function shouldMarkDays(timestamp) {
@@ -682,9 +858,14 @@ function shouldMarkDays(timestamp) {
     return false;
 }
 
-function getStoryViewsDataset(postId, title) {
+function getStoryViewsDataset(postId) {
+    const title = storiesStats.get(postId)['title'];
+
     return makeDataset(
-        extractStoryViews(storyStats.get(postId)),
+        new Map([
+            ...extractOldStoryViews(oldStoryStats.get(postId)),
+            ...extractNewStoryViews(newStoryStats.get(postId)),
+        ]),
         viewsColor,
         viewsColor + '80',
         title === undefined ? 'Views' : `Views: ${title}`,
@@ -692,7 +873,7 @@ function getStoryViewsDataset(postId, title) {
 }
 
 async function plotFollowersPerView() {
-    plotAndDownload(
+    await plotAndDownload(
         [getFollowersPerViewDataset()],
         false,
         {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
@@ -711,7 +892,7 @@ async function plotFollowersAndPerView() {
         },
     };
 
-    plotAndDownload(
+    await plotAndDownload(
         [getFollowersPerViewDataset(), followersDataset],
         false,
         {...makeLastViewsAnnotations(), ...makeManualEventsAnnotations()},
@@ -720,7 +901,6 @@ async function plotFollowersAndPerView() {
 }
 
 function getFollowersPerViewDataset() {
-    const multiplier = 1000;
     const data = new Map();
     const viewsIterator = views.entries();
     let viewsEntry = viewsIterator.next();
@@ -743,7 +923,7 @@ function getFollowersPerViewDataset() {
         let netFollowersInPeriod = followersAtTimestamp - lastFollowers;
 
         const periodValue = netFollowersInPeriod / viewsInPeriod;
-        data.set(endTimestamp, isNaN(periodValue) ? 0 : periodValue * multiplier);
+        data.set(endTimestamp, isNaN(periodValue) ? 0 : periodValue * followersPerViewMultiplier);
 
         lastFollowers = followersAtTimestamp;
     }
@@ -754,9 +934,209 @@ function getFollowersPerViewDataset() {
         data,
         followersPerViewColor,
         followersPerViewColor + '80',
-        multiplier === 1 ? 'Followers per View' : `Followers per ${multiplier} Views`,
+        followersPerViewMultiplier === 1 ? 'Followers per View' : `Followers per ${followersPerViewMultiplier} Views`,
     );
     dataset['stepped'] = 'after';
 
     return dataset;
+}
+
+async function plotStoryFollowersPerView(postId, events) {
+    await loadStoryStatsIfNot(postId);
+
+    await plotAndDownload(
+        [getStoryFollowersPerViewDataset(postId)],
+        false,
+        makeVerticalAnnotations(mergeManualAndLoadedStoryEvents(postId, events)),
+        getStoryExtraAxes(postId),
+    );
+}
+
+async function plotStoryViewsAndFollowersPerView(postId, events) {
+    const followersDataset = getStoryFollowersPerViewDataset(postId);
+    followersDataset['yAxisID'] = 'y1';
+
+    const y1Scale = {
+        position: 'right',
+        grid: {
+            drawOnChartArea: false, // only want the grid lines for one axis to show up
+        },
+    };
+
+    await plotAndDownload(
+        [getStoryViewsDataset(postId), followersDataset],
+        false,
+        makeVerticalAnnotations(mergeManualAndLoadedStoryEvents(postId, events)),
+        {y1: y1Scale, ...getStoryExtraAxes(postId)},
+    );
+}
+
+function getStoryFollowersPerViewDataset(postId) {
+    const title = storiesStats.get(postId)['title'];
+    const views = new Map();
+    const followers = new Map();
+
+    for (const [key, value] of newStoryStats.get(postId)) {
+        const dayTimestamp = value['dayStartsAt'];
+        const date = new Date(dayTimestamp);
+        date.setUTCDate(1);
+        const monthTimestamp = date.getTime();
+
+        views.set(monthTimestamp, value['readersThatViewedCount'] + (views.get(monthTimestamp) || 0))
+        followers.set(monthTimestamp, value['readersThatInitiallyFollowedAuthorFromThisPostCount'] + (followers.get(monthTimestamp) || 0))
+    }
+
+    const data = new Map();
+
+    for (const [timestamp, dayViews] of views) {
+        data.set(timestamp, dayViews === 0 ? 0 : followers.get(timestamp) * followersPerViewMultiplier / dayViews);
+    }
+
+    const sorted = sortMap(data);
+    const lastValue = Array.from(sorted.values()).pop();
+    sorted.set(getToday().getTime(), lastValue);
+
+    const dataset = makeDataset(
+        sorted,
+        followersPerViewColor,
+        followersPerViewColor + '80',
+        `Followers per ${followersPerViewMultiplier === 1 ? 'View' : `${followersPerViewMultiplier} Views`}: ${title}`,
+    );
+    dataset['stepped'] = 'before';
+
+    return dataset;
+}
+
+async function plotStoriesReadRatioBubbles() {
+    const dataset = getStoriesReadRatioBubblesDataset();
+
+    await plotAndDownload(
+        [dataset],
+        false,
+        makeBubbleLabelAnnotations(dataset.data),
+    );
+}
+
+function getStoriesReadRatioBubblesDataset() {
+    const points = [];
+    const maxViews = getMaxViews();
+
+    for (const [id, st] of storiesStats) {
+        const views = st.totalStats.views;
+        const r = Math.sqrt(views / maxViews) * maxBubbleRadius;
+        points.push({
+            x: new Date(st.firstPublishedAt),
+            y: views === 0 ? 0 : st.totalStats.reads / views,
+            r: r,
+            title: st.title,
+        });
+    }
+
+    return makeBubbleDataset(
+        points,
+        readsColor,
+        readsColor + '80',
+        'Size = Views, Y = Read Ratio',
+    );
+}
+
+async function plotStoriesFollowersBubbles() {
+    const dataset = getStoriesFollowersBubblesDataset();
+
+    await plotAndDownload(
+        [dataset],
+        false,
+        makeBubbleLabelAnnotations(dataset.data),
+    );
+}
+
+function getStoriesFollowersBubblesDataset() {
+    const points = [];
+    const maxViews = getMaxViews();
+
+    for (const [id, st] of storiesStats) {
+        if (!newStoryStats.has(id)) {
+            continue;
+        }
+
+        const views = st.totalStats.views;
+        const r = Math.sqrt(views / maxViews) * maxBubbleRadius;
+        points.push({
+            x: new Date(st.firstPublishedAt),
+            y: getStoryFollowersPerView(id) * followersPerViewMultiplier,
+            r: r,
+            title: st.title,
+        });
+    }
+
+    return makeBubbleDataset(
+        points,
+        followersColor,
+        followersColor + '80',
+        `Size = Views, Y = Followers per ${followersPerViewMultiplier === 1 ? 'View' : `${followersPerViewMultiplier} Views`}`,
+    );
+}
+
+function getStoryFollowersPerView(postId) {
+    let followers = 0;
+    let views = 0;
+
+    console.log('Getting followers per view for article: ' + postId);
+    for (const [key, value] of newStoryStats.get(postId)) {
+        views += value.readersThatViewedCount;
+        followers += value.readersThatInitiallyFollowedAuthorFromThisPostCount;
+    }
+
+    return views === 0 ? 0 : followers / views;
+}
+
+function getMaxViews() {
+    let result = 0;
+
+    for (const [id, st] of storiesStats) {
+        const views = st.totalStats.views;
+
+        if (views > result) {
+            result = views;
+        }
+    }
+
+    return result;
+}
+
+function makeBubbleDataset(points, color, fillColor, title) {
+    return {
+        type: 'bubble',
+        label: title,
+        data: points,
+        fill: true,
+        backgroundColor: fillColor,//Utils.transparentize(color, 0.5),
+        borderColor: color,
+        borderWidth: 1,
+//        tension: 0.1,
+//        showLine: true,
+        yAxisID: 'y',
+    }
+}
+
+function makeBubbleLabelAnnotations(data) {
+    const result = {};
+
+    for (const point of data) {
+        result[annotationIndex++ + ''] = makeLabelAnnotation(point.x, point.y, point.title);
+    }
+
+    return result;
+}
+
+function makeLabelAnnotation(date, value, text) {
+    return {
+        type: 'label',
+        xValue: date,
+        yValue: value,
+        content: shortenString(text, maxBubbleTitleLength),
+        font: {
+            size: 6,
+        }
+    };
 }
