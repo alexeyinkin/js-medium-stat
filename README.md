@@ -47,3 +47,41 @@ In [1_constants.js](1_constants.js), populate the `manualEvents` map.
 It will produce vertical lines with the specified text on all overall charts.
 
 For the charts for individual articles, pass the map to the plotting function.
+
+## Gallery
+
+### Read Ratio Bubbles
+
+![Read Ratio Bubbles](examples/read_ratio_bubbles.png)
+
+### Daily Views
+
+![Daily Views](examples/views.png)
+
+### Daily Views, Weekly Average
+
+![Daily Views, Weekly Average](examples/views_wa.png)
+
+### Daily Reads
+
+![Daily Reads](examples/reads.png)
+
+### Daily Reads, Weekly Average
+
+![Daily Reads, Weekly Average](examples/reads_wa.png)
+
+### Followers
+
+![Followers](examples/followers.png)
+
+### Followers per 1000 Views
+
+![Followers per 1000 Views](examples/followers_per_view.png)
+
+### Followers and Followers per 1000 Views
+
+![Followers](examples/followers_and_per_view.png)
+
+### Story Views
+
+![Followers](examples/views_e13f88ea5461.png)
