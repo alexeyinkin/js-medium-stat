@@ -502,6 +502,18 @@ function getLastViewsEvents() {
     return result;
 }
 
+function makeReadsAnnotations() {
+    const events = new Map();
+
+    const firstView = Array.from(views.keys())[0];
+    const algorithmChangeDate = new Date(2023, 7); // 2023-08-01
+    if (firstView < algorithmChangeDate.getTime()) {
+        events.set(algorithmChangeDate, 'New Alg');
+    }
+
+    return makeVerticalAnnotations(events);
+}
+
 async function cachedOrLoadYear(key, year, liveAllowed, acceptIncomplete, callback) {
     const fullKey = `stat_${username}_${key}_${year}`;
     const date = new Date(Date.UTC(year, 0));
@@ -846,7 +858,10 @@ async function plotReads() {
         [getReadsDataset()],
         'reads',
         true,
-        makeOverallAnnotations(),
+        {
+            ...makeReadsAnnotations(),
+            ...makeOverallAnnotations(),
+        },
     );
 }
 
@@ -855,7 +870,10 @@ async function plotReadsWeekAverage() {
         [getReadsWeekAverageDataset()],
         'reads_wa',
         true,
-        makeOverallAnnotations(),
+        {
+            ...makeReadsAnnotations(),
+            ...makeOverallAnnotations(),
+        },
     );
 }
 
@@ -864,7 +882,10 @@ async function plotViewsAndReads() {
         [getReadsDataset(), getViewsDataset()],
         'views_reads',
         true,
-        makeOverallAnnotations(),
+        {
+            ...makeReadsAnnotations(),
+            ...makeOverallAnnotations(),
+        },
     );
 }
 
@@ -873,7 +894,10 @@ async function plotViewsAndReadsWeekAverage() {
         [getReadsWeekAverageDataset(), getViewsWeekAverageDataset()],
         'views_reads_wa',
         true,
-        makeOverallAnnotations(),
+        {
+            ...makeReadsAnnotations(),
+            ...makeOverallAnnotations(),
+        },
     );
 }
 
@@ -1145,7 +1169,10 @@ async function plotStoriesReadRatioBubbles() {
         [dataset],
         'read_ratio_bubbles',
         false,
-        makeBubbleLabelAnnotations(dataset.data),
+        {
+            ...makeReadsAnnotations(),
+            ...makeBubbleLabelAnnotations(dataset.data),
+        }
     );
 }
 
@@ -1157,9 +1184,14 @@ function getStoriesReadRatioBubblesDataset() {
         const st = storiesStats[id];
         const views = st.totalStats.views;
         const r = Math.sqrt(views / maxViews) * maxBubbleRadius;
+
+        const newReadRatio = getStoryNewReadRatio(id);
+        //const oldReadRatio = views === 0 ? 0 : st.totalStats.reads / views;
+
         points.push({
             x: new Date(st.firstPublishedAt),
-            y: views === 0 ? 0 : st.totalStats.reads / views,
+            //y: Math.max(oldReadRatio, newReadRatio),
+            y: newReadRatio,
             r: r,
             title: st.title,
         });
@@ -1171,6 +1203,26 @@ function getStoriesReadRatioBubblesDataset() {
         readsColor + '80',
         'Size = Views, Y = Read Ratio',
     );
+}
+
+// The current algorithm of reads is effective since August 1
+// https://medium.com/blog/new-partner-program-incentives-focus-on-high-quality-human-writing-7335f8557f6e
+// To be able to compare the stories before and after that date,
+// we calculate read ratio for all stories using the new algorithm.
+// For that, we only count views and reads since that date.
+function getStoryNewReadRatio(postId) {
+    const readsCountSince = (new Date(2023, 7)).getTime(); // 2023-08-01
+    let reads = 0;
+    let views = 0;
+
+    for (const [key, value] of newStoryStats.get(postId)) {
+        if (value.dayStartsAt >= readsCountSince) {
+            reads += value.readersThatReadCount;
+            views += value.readersThatViewedCount;
+        }
+    }
+
+    return views === 0 ? 0 : reads / views;
 }
 
 async function plotStoriesFollowersBubbles() {
@@ -1220,8 +1272,8 @@ function getStoryFollowersPerView(postId) {
 
     for (const [key, value] of newStoryStats.get(postId)) {
         if (value.dayStartsAt >= followersCountSince) {
-            views += value.readersThatViewedCount;
             followers += value.readersThatInitiallyFollowedAuthorFromThisPostCount;
+            views += value.readersThatViewedCount;
         }
     }
 

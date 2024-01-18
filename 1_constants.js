@@ -35,7 +35,7 @@ let manualFollowerMilestones = new Map([
 
 // Custom annotations at specific points in time.
 let manualEvents = new Map([
-    [new Date(Date.UTC(2023,  6, 29)), 'GDE'],        //  2023-07-29
+//    [new Date(Date.UTC(2023,  6, 29)), 'GDE'],        //  2023-07-29
 ]);
 
 let followersColor = '#ff0000';

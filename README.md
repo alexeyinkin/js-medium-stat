@@ -18,12 +18,12 @@ Use this at your risk.
    Malicious code pasted that way can steal your access to the currently viewed website, and more.
 4. Paste the content of [1_constants.js](1_constants.js) to the console and press Enter.
 5. Paste the content of [2_functions.js](2_functions.js) to the console and press Enter.
-6. Paste the content of [3_load.js](3_load.js) to the console and press Enter.
+6. From [3_load.js](3_load.js), copy the call of `loadAllFresh()` to the console and press Enter.
 7. From [4_plot.js](4_plot.js), paste any lines to the console to plot specific charts you want.
 
-Loading of each story's statistics takes long time.
+Loading of each story's statistics takes a few minutes on my account with 60+ stories.
 You can start plotting before it's complete.
-Overall account data are quickly loaded before separate stories and can be plotted.
+Overall account data is quickly loaded before separate stories and can be plotted.
 Bubble charts will show only the stories for which all statistics are loaded.
 
 In the end, you should see in console:
@@ -34,30 +34,52 @@ All statistics are loaded.
 
 ## Cache
 
-The script caches all historical data in
-[local storage](https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API).
-These are the following data for past months (to cache the immediately previous month, today should be 2nd+ day):
+The script caches every request to Medium in
+[IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API).
+Some of that data will never expire:
 
-- Account views and reads.
-- Each story's statistics.
+- Account views and reads for past months (these statistics are requested per month).
+- Each story's statistics for past years (these statistics are requested per year).
 
-The first run takes long time because it makes a query per story per month.
-After that, even if you restart the browser, only the following is fetched:
+Other data is better updated everytime you want fresh charts.
 
-- List of stories.
-- Account views and reads for the current month.
-- Each story' statistics for the current month.
-- Each new story's statistics.
+When you open the console in your browser, there are few ways to initialize the script:
 
-## Quota
+### Load all fresh data
 
-On the first loading, you will likely hit the quota:
+This function loads all the data.
+It uses cache for complete periods and fetches fresh data for incomplete periods.
+Use this when you want the fresh data and to update the cache.
 
-```
-Uncaught (in promise) DOMException: The quota has been exceeded.
+```js
+await loadAllFresh();
 ```
 
-On my account with 2 years history and 66 stories, I hit it after story 47.
+### Load all data, accept incomplete cached periods
+
+This function loads all the data.
+On the first run, if nothing is cached, it behaves like the above.
+Otherwise, for each piece of data it uses a cached copy if available
+even if it is for an incomplete period.
+For stories and periods with no cached data at all, fresh data is fetched.
+
+In short, this is the function to resume fetching if it was interrupted for some reason
+and to not re-request the current period data where it's cached.
+
+```js
+await loadAllCachedIncomplete();
+```
+
+### Load all data from cache only
+
+This function loads all the data from cache only. No requests to Medium are made.
+If anything is not cached, empty data is loaded for that metric:
+no followers, no stories, or no views or anything for a story.
+Use this for experiments to not consume the API quota at all.
+
+```js
+await loadAllCachedOnly();
+```
 
 ## Chart Size
 
@@ -84,9 +106,42 @@ For the charts for individual articles, pass the map to the plotting function.
 
 ![Followers Bubbles](examples/followers_bubbles.png)
 
+In this chart, every story is a bubble:
+
+- Horizontally: the date when the story was published.
+- Bubble size: views of the story.
+- Vertically: followers from the story per 1000 views.
+  This is underestimation, because when someone navigates from the story to your profile and follows from there,
+  they are not counted as a follower from this story.
+
+Medium only counts followers per story since 2023.
+For older stories, the bubbles show followers since 2023 per views since 2023.
+
+```js
+plotStoriesFollowersBubbles();
+```
+
 ### Read Ratio Bubbles
 
 ![Read Ratio Bubbles](examples/read_ratio_bubbles.png)
+
+In this chart, every story is a bubble:
+- Horizontally: the date when the story was published.
+- Bubble size: views of the story.
+- Vertically: read ratio of the story.
+
+On August 1, 2023, Medium
+[changed](https://medium.com/blog/new-partner-program-incentives-focus-on-high-quality-human-writing-7335f8557f6e)
+the definition of "read".
+Before it was a read till the end. After that date, it is a read for 30 seconds or more.
+
+For the stories published since that date, bubbles show total reads over total views.
+For older stories, the bubbles show reads since that date over views since that date.
+This is so the bubbles before and after the date can be compared.
+
+```js
+plotStoriesReadRatioBubbles();
+```
 
 ### Daily Views
 
