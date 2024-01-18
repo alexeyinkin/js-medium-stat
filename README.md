@@ -139,6 +139,9 @@ For the stories published since that date, bubbles show total reads over total v
 For older stories, the bubbles show reads since that date over views since that date.
 This is so the bubbles before and after the date can be compared.
 
+However, if an article was not viewed much since that date, the ratio may be heavily random
+even for not small bubbles.
+
 ```js
 plotStoriesReadRatioBubbles();
 ```
@@ -147,30 +150,84 @@ plotStoriesReadRatioBubbles();
 
 ![Daily Views](examples/views.png)
 
+This and other charts show:
+- Each published article as a vertical bar without text label (darker than the grid).
+- Each boosted article on the boost date.
+- When you last had no views on a day, <10 views, <100 views, etc.
+- Any custom labels can be added via `manualEvents` in [1_constants.js](1_constants.js).
+
+```js
+plotViews();
+```
+
 ### Daily Views, Weekly Average
 
 ![Daily Views, Weekly Average](examples/views_wa.png)
+
+```js
+plotViewsWeekAverage();
+```
 
 ### Daily Reads
 
 ![Daily Reads](examples/reads.png)
 
+```js
+plotReads();
+```
+
 ### Daily Reads, Weekly Average
 
 ![Daily Reads, Weekly Average](examples/reads_wa.png)
+
+```js
+plotReadsWeekAverage();
+```
+
+### Daily Views and Reads
+
+![Daily Views and Reads](examples/views_reads.png)
+
+```js
+plotViewsAndReads();
+```
+
+### Daily Views and Reads, Weekly Average
+
+![Daily Reads](examples/views_reads_wa.png)
+
+```js
+plotViewsAndReadsWeekAverage();
+```
 
 ### Followers
 
 ![Followers](examples/followers.png)
 
+```js
+plotFollowers();
+```
+
 ### Followers per 1000 Views
 
 ![Followers per 1000 Views](examples/followers_per_view.png)
 
+```js
+plotFollowersPerView();
+```
+
 ### Followers and Followers per 1000 Views
 
-![Followers](examples/followers_and_per_view.png)
+![Followers and Followers per 1000 Views](examples/followers_and_per_view.png)
+
+```js
+plotFollowersAndPerView();
+```
 
 ### Story Views
 
-![Followers](examples/views_e13f88ea5461.png)
+![Story Views](examples/views_e13f88ea5461.png)
+
+```js
+plotStoryViews('story_id');
+```
