@@ -80,6 +80,10 @@ For the charts for individual articles, pass the map to the plotting function.
 
 ## Gallery
 
+### Followers Bubbles
+
+![Followers Bubbles](examples/followers_bubbles.png)
+
 ### Read Ratio Bubbles
 
 ![Read Ratio Bubbles](examples/read_ratio_bubbles.png)
