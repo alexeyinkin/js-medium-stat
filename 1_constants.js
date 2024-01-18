@@ -46,14 +46,13 @@ let storyColor = '#000000';
 
 
 // The rest you don't need to edit.
-// This code should be in '2_functions.js', but Firefox has a bug
+// This code should be in '2_functions.js' as uneditable one, but Firefox has a bug
 // that would not declare some functions if pasted together with assignments.
 
 let username = window.location.href.match(/@([^\/]*)(\/|$)/)[1]; // From '@' till '/' or end.
 
 const millisecondsInDay = 24 * 60 * 60 * 1000;
 
-let oldStoryStats = new Map();
 let newStoryStats = new Map();
 
 let audienceStats = undefined;
@@ -72,3 +71,28 @@ let maxBubbleTitleLength = 40;
 let maxBubbleRadius = 50;
 
 let scriptsLoaded = false;
+
+// TODO: Make CacheBehavior enum when convert to TypeScript
+
+// Loading new data that cannot be fully in cache.
+// Don't try to load an older snapshot with '_incomplete' suffix.
+// Store with '_incomplete' suffix.
+const CACHE_BEHAVIOR_STORE_INCOMPLETE = 1;
+
+// Loading new data that cannot be fully in cache.
+// Try to load an older snapshot with '_incomplete' suffix.
+// If no snapshot is cached, load new data and store with '_incomplete' suffix.
+const CACHE_BEHAVIOR_ACCEPT_INCOMPLETE = 2;
+
+// Loading archive data that will never change.
+// Try to load a snapshot.
+// If no snapshot is cached, load data and store.
+const CACHE_BEHAVIOR_COMPLETE = 3;
+
+// Do not load any new data.
+// Return only cached data or undefined if not cached.
+const CACHE_BEHAVIOR_ONLY_CACHE = 4;
+
+const incompleteCacheSuffix = '_incomplete';
+const dbName = 'ainkin';
+const storeName = 'MyStore';

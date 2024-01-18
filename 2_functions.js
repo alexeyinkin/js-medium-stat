@@ -99,20 +99,47 @@ function shortenString(str, maxLength) {
     return str.length > maxLength ? str.substring(0, maxLength - 3) + '…' : str;
 }
 
+function addZerosOnMissingDates(map) {
+    const result = new Map(map);
+    const today = getToday().getTime();
+
+    let timestamp = Array.from(map.keys())[0];
+    while (timestamp < today) {
+        if (!result.has(timestamp)) {
+            result.set(timestamp, 0);
+        }
+        timestamp += millisecondsInDay;
+    }
+
+    return sortMap(result);
+}
+
 
 // Data loading functions.
 
-async function loadAll() {
+async function loadAllFresh() {
+    return loadAll(true, false);
+}
+
+async function loadAllCachedIncomplete() {
+    return loadAll(true, true);
+}
+
+async function loadAllCachedOnly() {
+    return loadAll(false, true);
+}
+
+async function loadAll(liveAllowed, acceptIncomplete) {
     await loadScripts();
-    await loadAllExceptStories();
-    await loadAllStories();
+    await loadAllExceptStories(liveAllowed, acceptIncomplete);
+    await loadAllStories(liveAllowed, acceptIncomplete);
     console.log('All statistics are loaded.');
 }
 
-async function loadAllExceptStories() {
-    audienceStats = await loadAudienceStats();
-    viewsAndReads = await loadViewsAndReads();
-    storiesStats = await loadStoriesStats();
+async function loadAllExceptStories(liveAllowed, acceptIncomplete) {
+    audienceStats = await cachedOrLoadAudienceStats(liveAllowed, acceptIncomplete);
+    viewsAndReads = await cachedOrLoadViewsAndReads(liveAllowed, acceptIncomplete);
+    storiesStats = await cachedOrLoadStoriesStats(liveAllowed, acceptIncomplete);
 
     views = extractViews(viewsAndReads);
     reads = extractReads(viewsAndReads);
@@ -120,15 +147,18 @@ async function loadAllExceptStories() {
     followers = mergeManualAndLoadedFollowers();
 }
 
-async function loadAllStories() {
-    let i = 0;
-    for (const [id, st] of storiesStats) {
-        await loadStoryStatsIfNot(id);
-        if (i > 5) {
-            break;
-        }
-        i++;
+async function loadAllStories(liveAllowed, acceptIncomplete) {
+    for (const id in storiesStats) {
+        await loadStoryStatsIfNot(id, liveAllowed, acceptIncomplete);
     }
+}
+
+async function cachedOrLoadAudienceStats(liveAllowed, acceptIncomplete) {
+    return await cachedOrLoad(
+        `stat_${username}_audience`,
+        getCacheBehavior(liveAllowed, false, acceptIncomplete),
+        () => loadAudienceStats(),
+    ) || [];
 }
 
 async function loadAudienceStats() {
@@ -138,28 +168,30 @@ async function loadAudienceStats() {
     return Papa.parse(text, { header: true })['data'].filter(e => e['period_end'] !== undefined);
 }
 
-async function loadViewsAndReads() {
+async function cachedOrLoadViewsAndReads(liveAllowed, acceptIncomplete) {
 	const result = new Map();
 	const now = new Date();
 	const year = now.getUTCFullYear();
 	let month = now.getUTCMonth();
 
 	while (true) {
-		const monthResult = await cachedOrLoad(
+		const batchResult = await cachedOrLoadMonth(
 		    'MonthlyStatsAndChartQuery',
 		    year,
 		    month,
+		    liveAllowed,
+		    acceptIncomplete,
 		    () => loadMonthViewsAndReads(year, month),
-        );
-		console.log(monthResult);
+        ) || {};
+		console.log(batchResult);
 
-        let monthResultSize = 0;
-        for (const key in monthResult) {
-            result.set(parseInt(key), monthResult[key]);
-            monthResultSize++;
+        let batchSize = 0;
+        for (const key in batchResult) {
+            result.set(parseInt(key), batchResult[key]);
+            batchSize++;
         }
 
-		if (monthResultSize == 0) {
+		if (batchSize == 0) {
 		    break;
         }
 
@@ -209,8 +241,16 @@ async function loadMonthViewsAndReads(year, month) {
 	return result;
 }
 
+async function cachedOrLoadStoriesStats(liveAllowed, acceptIncomplete) {
+    return await cachedOrLoad(
+        `stat_${username}_stories`,
+        getCacheBehavior(liveAllowed, false, acceptIncomplete),
+        () => loadStoriesStats(),
+    ) || {};
+}
+
 async function loadStoriesStats() {
-    const result = new Map();
+    const result = {};
     let after = '';
 
     while (true) {
@@ -220,7 +260,7 @@ async function loadStoriesStats() {
         const edges = postsConnection.edges;
 
         for (const edge of edges) {
-            result.set(edge.node.id, edge.node);
+            result[edge.node.id] = edge.node;
         }
 
         if (!pageInfo.hasNextPage) {
@@ -228,7 +268,7 @@ async function loadStoriesStats() {
         }
 
         after = pageInfo.endCursor;
-        await delay(1000);
+        await delay(1000); // Avoid abusing the API.
     }
 
     return result;
@@ -237,6 +277,7 @@ async function loadStoriesStats() {
 async function loadStoriesStatsPage(after) {
     console.log(`Loading stories lifetime stats after: ${after}`);
 
+    // TODO: Try more than 10 in a batch.
 	const response = await fetch("https://medium.com/_/graphql", {
 	    "headers": {
     	    "content-type": "application/json",
@@ -258,105 +299,27 @@ async function loadStoriesStatsPage(after) {
     return await response.json();
 }
 
-// The old statistics format is for December 2022 and earlier.
-async function loadOldStoryStats(postId) {
-	const result = new Map();
-	const year = 2022;
-	let month = 11; // December
-
-	while (true) {
-		const monthResult = await cachedOrLoad(
-		    `useStatsPostAnteriorChartDataQuery_${postId}`,
-		    year,
-		    month,
-		    () => loadOldMonthStoryStats(postId, year, month),
-        );
-		console.log(monthResult);
-
-        let monthResultSize = 0;
-        for (const key in monthResult) {
-            result.set(parseInt(key), monthResult[key]);
-            monthResultSize++;
-        }
-
-		if (monthResultSize == 0) {
-		    break;
-        }
-
-		month--;
-	}
-
-    return sortMap(result);
-}
-
-async function loadOldMonthStoryStats(postId, year, month) {
-    const startDate = new Date(Date.UTC(year, month));
-	const startTime = startDate.getTime();
-	const endTime = (new Date(Date.UTC(year, month + 1))).getTime();
-
-    const effectiveYear = startDate.getUTCFullYear();
-    const effectiveMonth = startDate.getUTCMonth();
-
-    console.log(`Loading old stats for story ${postId} ${effectiveYear}-${effectiveMonth}, timestamps ${startTime}-${endTime}`);
-
-	const response = await fetch("https://medium.com/_/graphql", {
-	    "headers": {
-    	    "content-type": "application/json",
-    	},
-    	"body": `[{
-    		"operationName": "useStatsPostAnteriorChartDataQuery",
-    		"variables": {
-    			"postId": "${postId}",
-                "startAt": ${startTime},
-                "endAt": ${endTime}
-    		},
-    		"query": "query useStatsPostAnteriorChartDataQuery($postId: ID!, $startAt: Long!, $endAt: Long!) {\\n  post(id: $postId) {\\n    id\\n    dailyStats(startAt: $startAt, endAt: $endAt) {\\n      ...anteriorBucketTimestamps_dailyPostStat\\n      __typename\\n    }\\n    earnings {\\n      dailyEarnings(startAt: $startAt, endAt: $endAt) {\\n        ...anteriorBucketTimestamps_dailyPostEarning\\n        __typename\\n      }\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\\nfragment anteriorBucketTimestamps_dailyPostStat on DailyPostStat {\\n  periodStartedAt\\n  views\\n  internalReferrerViews\\n  memberTtr\\n  __typename\\n}\\n\\nfragment anteriorBucketTimestamps_dailyPostEarning on DailyPostEarning {\\n  periodStartedAt\\n  amount\\n  __typename\\n}\\n"
-    	}]`,
-	    "method": "POST",
-	});
-
-	const arr = await response.json();
-	const points = arr[0].data.post.dailyStats;
-	const result = {};
-
-	for (const point of points) {
-		result[point.periodStartedAt] = point;
-	}
-
-	return result;
-}
-
-// The new statistics format is for January 2023 and on.
-async function loadNewStoryStats(postId) {
+// The format is called 'new' because Medium's frontend calls it for January 2023 and on.
+// This also works for dates before that, but then it has not member and non-member segregation
+// and always has zero followers. This is fine for us.
+async function loadNewStoryStats(postId, liveAllowed, acceptIncomplete) {
 	const result = new Map();
 	const now = new Date();
-	const year = now.getUTCFullYear();
-	let month = now.getUTCMonth();
+	const yearPublished = (new Date(storiesStats[postId].firstPublishedAt)).getUTCFullYear();
+	let year = now.getUTCFullYear();
 
-	while (true) {
-		const monthResult = await cachedOrLoad(
+	for (let year = now.getUTCFullYear(); year >= yearPublished; year--) {
+		const batchResult = await cachedOrLoadYear(
 		    `useStatsPostNewChartDataQuery_${postId}`,
 		    year,
-		    month,
-		    () => loadNewMonthStoryStats(postId, year, month),
-        );
-		console.log(monthResult);
+		    liveAllowed,
+		    acceptIncomplete,
+		    () => loadNewYearStoryStats(postId, year),
+        ) || {};
+		console.log(batchResult);
 
-        let monthResultSize = 0;
-        for (const key in monthResult) {
-            result.set(key, monthResult[key]);
-            monthResultSize++;
-        }
-
-		if (monthResultSize == 0) {
-		    break;
-        }
-
-		month--;
-
-        const effectiveYear = (new Date(Date.UTC(year, month))).getUTCFullYear();
-        if (effectiveYear < 2023) {
-            break;
+        for (const key in batchResult) {
+            result.set(key, batchResult[key]);
         }
 	}
 
@@ -364,15 +327,13 @@ async function loadNewStoryStats(postId) {
     return sortMap(result);
 }
 
-async function loadNewMonthStoryStats(postId, year, month) {
-    const startDate = new Date(Date.UTC(year, month));
+async function loadNewYearStoryStats(postId, year) {
+    const startDate = new Date(Date.UTC(year, 0));
 	const startTime = startDate.getTime();
-	const endTime = (new Date(Date.UTC(year, month + 1))).getTime();
+	const endTime = (new Date(Date.UTC(year + 1, 0))).getTime();
+	const st = storiesStats[postId];
 
-    const effectiveYear = startDate.getUTCFullYear();
-    const effectiveMonth = startDate.getUTCMonth();
-
-    console.log(`Loading new stats for story ${postId} ${effectiveYear}-${effectiveMonth}, timestamps ${startTime}-${endTime}`);
+    console.log(`Loading new stats for story ${postId} ${st.title}, ${year}, timestamps ${startTime}-${endTime}`);
 
 	const response = await fetch("https://medium.com/_/graphql", {
 	    "headers": {
@@ -410,7 +371,7 @@ async function loadNewMonthStoryStats(postId, year, month) {
 function mergeManualAndLoadedFollowers() {
     const result = new Map();
 
-    result.set(viewsAndReads.keys().next().value, 0);
+    result.set(viewsAndReads.keys().next().value || getToday().getTime(), 0);
 
     for (const data of audienceStats) {
         const date = parseIso8601Date(data['period_end']);
@@ -425,21 +386,6 @@ function mergeManualAndLoadedFollowers() {
     manualFollowerMilestones.forEach((value, date) => {
         result.set(date.getTime(), value);
     });
-
-    return sortMap(result);
-}
-
-function addZerosOnMissingDates(map) {
-    const result = new Map(map);
-    const today = getToday().getTime();
-
-    let timestamp = Array.from(map.keys())[0];
-    while (timestamp < today) {
-        if (!result.has(timestamp)) {
-            result.set(timestamp, 0);
-        }
-        timestamp += millisecondsInDay;
-    }
 
     return sortMap(result);
 }
@@ -465,17 +411,6 @@ function extractReads(viewsAndReads) {
 
     const resultWithZeros = addZerosOnMissingDates(result);
     resultWithZeros.delete(getToday().getTime()); // Today is incomplete, breaks a lot of things.
-    return resultWithZeros;
-}
-
-function extractOldStoryViews(stats) {
-    const result = new Map();
-
-    stats.forEach((value, timestamp) => {
-        result.set(timestamp, value['views']);
-    });
-
-    const resultWithZeros = addZerosOnMissingDates(result);
     return resultWithZeros;
 }
 
@@ -514,7 +449,8 @@ function makeOverallAnnotations() {
 function makeStoriesAnnotations() {
     const result = {};
 
-    for (const [id, st] of storiesStats) {
+    for (const id in storiesStats) {
+        const st = storiesStats[id];
         result[annotationIndex++ + ''] = makeVerticalAnnotation(new Date(st.firstPublishedAt), storyColor + '60');
     }
 
@@ -528,7 +464,8 @@ function makeLastViewsAnnotations() {
 function makeBoostAnnotations() {
     const result = new Map();
 
-    for (const [id, st] of storiesStats) {
+    for (const id in storiesStats) {
+        const st = storiesStats[id];
         for (const timestamp of st.milestones.boostedAt) {
             result.set(new Date(timestamp), 'Boost');
         }
@@ -541,6 +478,7 @@ function makeManualEventsAnnotations() {
     return makeVerticalAnnotations(manualEvents);
 }
 
+// When you last had no views in a day, <10 views, <100 views, etc.
 function getLastViewsEvents() {
     const result = new Map();
 
@@ -564,41 +502,55 @@ function getLastViewsEvents() {
     return result;
 }
 
-async function cachedOrLoad(key, year, month, callback) {
-    const date = new Date(Date.UTC(year, month));
+async function cachedOrLoadYear(key, year, liveAllowed, acceptIncomplete, callback) {
+    const fullKey = `stat_${username}_${key}_${year}`;
+    const date = new Date(Date.UTC(year, 0));
 
-    if (!canDateBeCached(date)) {
-        return await callback();
+    return await cachedOrLoad(
+        fullKey,
+        getCacheBehavior(liveAllowed, isYearComplete(date), acceptIncomplete),
+        callback,
+    );
+}
+
+function isYearComplete(date) {
+    // Allow to cache last year and older if it's 2nd day today.
+    const year = date.getUTCFullYear();
+    const today = getToday();
+    const thisYear = today.getUTCFullYear();
+
+    if (thisYear <= year) {
+        return false;
     }
+
+    if (thisYear - year === 1) {
+        return today.getUTCMonth() > 0 || today.getUTCDate() > 1;
+    }
+
+    return true;
+}
+
+async function cachedOrLoadMonth(key, year, month, liveAllowed, acceptIncomplete, callback) {
+    const date = new Date(Date.UTC(year, month));
 
     const effectiveYear = date.getUTCFullYear();
     const effectiveMonth = date.getUTCMonth();
     const fullKey = `stat_${username}_${key}_${effectiveYear}_${effectiveMonth}`;
 
-    const cached = window.localStorage.getItem(fullKey);
-    if (cached !== null) {
-        console.log(`Retrieved from cache: ${fullKey}`);
-        return JSON.parse(cached);
-    }
-
-    const result = await callback();
-    window.localStorage.setItem(fullKey, JSON.stringify(result));
-    console.log(`Stored in cache: ${fullKey}`);
-    await delay(10000); // Avoid abusing the API.
-    return result;
+    return await cachedOrLoad(
+        fullKey,
+        getCacheBehavior(liveAllowed, isMonthComplete(date), acceptIncomplete),
+        callback,
+    );
 }
 
-function canDateBeCached(date) {
+function isMonthComplete(date) {
     // Allow to cache last month and older if it's 2nd day today.
     const month = date.getUTCFullYear() * 12 + date.getUTCMonth();
     const today = getToday();
     const thisMonth = today.getUTCFullYear() * 12 + today.getUTCMonth();
 
-    if (thisMonth < month) {
-        throw new Error('Must never try to cache the future');
-    }
-
-    if (thisMonth === month) {
+    if (thisMonth <= month) {
         return false;
     }
 
@@ -608,6 +560,139 @@ function canDateBeCached(date) {
 
     return true;
 }
+
+function getCacheBehavior(liveAllowed, isComplete, acceptIncomplete) {
+    if (!liveAllowed) {
+        return CACHE_BEHAVIOR_ONLY_CACHE;
+    }
+
+    if (isComplete) {
+        return CACHE_BEHAVIOR_COMPLETE;
+    }
+
+    if (acceptIncomplete) {
+        return CACHE_BEHAVIOR_ACCEPT_INCOMPLETE;
+    }
+
+    return CACHE_BEHAVIOR_STORE_INCOMPLETE;
+}
+
+async function cachedOrLoad(key, cacheBehavior, callback) {
+    switch (cacheBehavior) {
+        case CACHE_BEHAVIOR_STORE_INCOMPLETE:
+            return await loadAndStoreIncomplete(key, callback);
+
+        case CACHE_BEHAVIOR_ACCEPT_INCOMPLETE:
+            return await cachedOrLoadIncomplete(key, callback);
+
+        case CACHE_BEHAVIOR_COMPLETE:
+            return await cachedOrLoadComplete(key, callback);
+
+        case CACHE_BEHAVIOR_ONLY_CACHE:
+            return await cachedOrUndefined(key);
+    }
+    throw new Error(`Invalid cacheBehavior: ${cacheBehavior}`);
+}
+
+async function loadAndStoreIncomplete(key, callback) {
+    const result = await callback();
+    await store(key + incompleteCacheSuffix, result);
+    await delay(1000); // Avoid abusing the API.
+    return result;
+}
+
+async function cachedOrLoadIncomplete(key, callback) {
+    const fullKey = key + incompleteCacheSuffix;
+
+    const cached = await load(fullKey);
+    if (cached !== undefined) {
+        console.log(`Retrieved from cache: ${fullKey}`);
+        return cached;
+    }
+
+    await loadAndStoreIncomplete(key, callback);
+}
+
+async function cachedOrLoadComplete(key, callback) {
+    const cached = await load(key);
+    if (cached !== undefined) {
+        console.log(`Retrieved from cache: ${key}`);
+        return cached;
+    }
+
+    const result = await callback();
+    await store(key, result);
+    await delay(1000); // Avoid abusing the API.
+    return result;
+}
+
+async function cachedOrUndefined(key) {
+    for (const k of [key, key + incompleteCacheSuffix]) {
+        const cached = await load(k);
+        if (cached !== undefined) {
+            console.log(`Retrieved from cache: ${key}`);
+            return cached;
+        }
+    }
+
+    console.log(`Not found in complete or incomplete cache: ${key}`);
+    return undefined;
+}
+
+
+// Storage functions.
+
+async function store(key, value) {
+    const db = await openDB(dbName, storeName);
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.put({ id: key, value: value });
+
+        request.onsuccess = () => resolve();
+        request.onerror = (event) => reject('Error writing to the database: ' + event.target.errorCode);
+    });
+}
+
+async function load(key) {
+    const db = await openDB(dbName, storeName);
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([storeName], 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.get(key);
+
+        request.onsuccess = (event) => {
+            if (event.target.result) {
+                resolve(event.target.result.value);
+            } else {
+                resolve(undefined);
+            }
+        };
+        request.onerror = (event) => reject('Error reading from the database: ' + event.target.errorCode);
+    });
+}
+
+function openDB(dbName, storeName) {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(dbName, 1);
+
+        request.onerror = (event) => {
+            reject('Database error: ' + event.target.errorCode);
+        };
+
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            db.createObjectStore(storeName, { keyPath: 'id' });
+        };
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+    });
+}
+
 
 // Plot functions.
 
@@ -842,7 +927,7 @@ function getReadsWeekAverageDataset() {
 }
 
 async function plotStoryViews(postId, events) {
-    await loadStoryStatsIfNot(postId);
+    await loadStoryStatsIfNot(postId, true, false);
 
     await plotAndDownload(
         [getStoryViewsDataset(postId)],
@@ -853,22 +938,19 @@ async function plotStoryViews(postId, events) {
     );
 }
 
-async function loadStoryStatsIfNot(postId) {
-    const st = storiesStats.get(postId);
+async function loadStoryStatsIfNot(postId, liveAllowed, acceptIncomplete) {
+    const st = storiesStats[postId];
     if (st === undefined) {
         throw new Error('Story not found: ' + postId);
     }
 
     if (!newStoryStats.has(postId)) {
-        newStoryStats.set(postId, await loadNewStoryStats(postId));
-    }
-    if (!oldStoryStats.has(postId)) {
-        oldStoryStats.set(postId, await loadOldStoryStats(postId));
+        newStoryStats.set(postId, await loadNewStoryStats(postId, liveAllowed, acceptIncomplete));
     }
 }
 
 function mergeManualAndLoadedStoryEvents(postId, manualEvents) {
-    const st = storiesStats.get(postId);
+    const st = storiesStats[postId];
     let result = new Map(manualEvents || []);
 
     for (const timestamp of st.milestones.boostedAt) {
@@ -879,7 +961,7 @@ function mergeManualAndLoadedStoryEvents(postId, manualEvents) {
 }
 
 function getStoryExtraAxes(postId) {
-    const st = storiesStats.get(postId);
+    const st = storiesStats[postId];
     const result = {};
 
     if (shouldMarkDays(st['firstPublishedAt'])) {
@@ -903,13 +985,10 @@ function shouldMarkDays(timestamp) {
 }
 
 function getStoryViewsDataset(postId) {
-    const title = storiesStats.get(postId)['title'];
+    const title = storiesStats[postId].title;
 
     return makeDataset(
-        new Map([
-            ...extractOldStoryViews(oldStoryStats.get(postId)),
-            ...extractNewStoryViews(newStoryStats.get(postId)),
-        ]),
+        extractNewStoryViews(newStoryStats.get(postId)),
         viewsColor,
         viewsColor + '80',
         title === undefined ? 'Views' : `Views: ${title}`,
@@ -992,7 +1071,7 @@ function getFollowersPerViewDataset() {
 }
 
 async function plotStoryFollowersPerView(postId, events) {
-    await loadStoryStatsIfNot(postId);
+    await loadStoryStatsIfNot(postId, true, false);
 
     await plotAndDownload(
         [getStoryFollowersPerViewDataset(postId)],
@@ -1024,7 +1103,7 @@ async function plotStoryViewsAndFollowersPerView(postId, events) {
 }
 
 function getStoryFollowersPerViewDataset(postId) {
-    const title = storiesStats.get(postId)['title'];
+    const title = storiesStats[postId].title;
     const views = new Map();
     const followers = new Map();
 
@@ -1074,7 +1153,8 @@ function getStoriesReadRatioBubblesDataset() {
     const points = [];
     const maxViews = getMaxViews();
 
-    for (const [id, st] of storiesStats) {
+    for (const id in storiesStats) {
+        const st = storiesStats[id];
         const views = st.totalStats.views;
         const r = Math.sqrt(views / maxViews) * maxBubbleRadius;
         points.push({
@@ -1108,18 +1188,20 @@ function getStoriesFollowersBubblesDataset() {
     const points = [];
     const maxViews = getMaxViews();
 
-    for (const [id, st] of storiesStats) {
+    for (const id in storiesStats) {
         if (!newStoryStats.has(id)) {
             continue;
         }
 
+        const st = storiesStats[id];
         const views = st.totalStats.views;
+        const followersPerView = getStoryFollowersPerView(id);
         const r = Math.sqrt(views / maxViews) * maxBubbleRadius;
         points.push({
             x: new Date(st.firstPublishedAt),
-            y: getStoryFollowersPerView(id) * followersPerViewMultiplier,
+            y: followersPerView * followersPerViewMultiplier,
             r: r,
-            title: st.title,
+            title: followersPerView === 0 ? '' : st.title,
         });
     }
 
@@ -1132,13 +1214,15 @@ function getStoriesFollowersBubblesDataset() {
 }
 
 function getStoryFollowersPerView(postId) {
+    const followersCountSince = (new Date(2023, 0)).getTime();
     let followers = 0;
     let views = 0;
 
-    console.log('Getting followers per view for article: ' + postId);
     for (const [key, value] of newStoryStats.get(postId)) {
-        views += value.readersThatViewedCount;
-        followers += value.readersThatInitiallyFollowedAuthorFromThisPostCount;
+        if (value.dayStartsAt >= followersCountSince) {
+            views += value.readersThatViewedCount;
+            followers += value.readersThatInitiallyFollowedAuthorFromThisPostCount;
+        }
     }
 
     return views === 0 ? 0 : followers / views;
@@ -1147,8 +1231,8 @@ function getStoryFollowersPerView(postId) {
 function getMaxViews() {
     let result = 0;
 
-    for (const [id, st] of storiesStats) {
-        const views = st.totalStats.views;
+    for (const id in storiesStats) {
+        const views = storiesStats[id].totalStats.views;
 
         if (views > result) {
             result = views;
@@ -1167,8 +1251,6 @@ function makeBubbleDataset(points, color, fillColor, title) {
         backgroundColor: fillColor,//Utils.transparentize(color, 0.5),
         borderColor: color,
         borderWidth: 1,
-//        tension: 0.1,
-//        showLine: true,
         yAxisID: 'y',
     }
 }
@@ -1198,8 +1280,8 @@ function makeLabelAnnotation(date, value, text) {
 function dumpStoryIdsAndTitles() {
     let lines = [];
 
-    for (const [id, st] of storiesStats) {
-        lines.push(`${id}\t${st.title}`);
+    for (const id in storiesStats) {
+        lines.push(`${id}\t${storiesStats[id].title}`);
     }
 
     return lines.join('\n') + '\n';
