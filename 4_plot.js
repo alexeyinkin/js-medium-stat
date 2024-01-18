@@ -3,6 +3,7 @@
 
 // Plot specific charts you want:
 
+plotStoriesFollowersBubbles();
 plotStoriesReadRatioBubbles();
 
 plotViews();

@@ -21,13 +21,43 @@ Use this at your risk.
 6. Paste the content of [3_load.js](3_load.js) to the console and press Enter.
 7. From [4_plot.js](4_plot.js), paste any lines to the console to plot specific charts you want.
 
-The loading of overall data is separate from plotting.
-Once you load the data, plotting does not load new data.
-When plotting statistics for an individual article, the data is loaded on the first plot
-and not the subsequent ones, so when you change scale, colors, and other settings and re-plot,
-the loaded data is reused.
+Loading of each story's statistics takes long time.
+You can start plotting before it's complete.
+Overall account data are quickly loaded before separate stories and can be plotted.
+Bubble charts will show only the stories for which all statistics are loaded.
 
-For this reason, try to keep the browser tab open until you no longer need the data.
+In the end, you should see in console:
+
+```
+All statistics are loaded.
+```
+
+## Cache
+
+The script caches all historical data in
+[local storage](https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API).
+These are the following data for past months (to cache the immediately previous month, today should be 2nd+ day):
+
+- Account views and reads.
+- Each story's statistics.
+
+The first run takes long time because it makes a query per story per month.
+After that, even if you restart the browser, only the following is fetched:
+
+- List of stories.
+- Account views and reads for the current month.
+- Each story' statistics for the current month.
+- Each new story's statistics.
+
+## Quota
+
+On the first loading, you will likely hit the quota:
+
+```
+Uncaught (in promise) DOMException: The quota has been exceeded.
+```
+
+On my account with 2 years history and 66 stories, I hit it after story 47.
 
 ## Chart Size
 

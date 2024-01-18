@@ -2,13 +2,4 @@
 // Go to your profile page, e.g. https://medium.com/@alexey.inkin
 // Open the browser console (F12) and paste these files in order.
 
-await loadScripts();
-
-let audienceStats = await loadAudienceStats();
-let viewsAndReads = await loadViewsAndReads();
-let storiesStats = await loadStoriesStats();
-
-let views = extractViews(viewsAndReads);
-let reads = extractReads(viewsAndReads);
-
-let followers = mergeManualAndLoadedFollowers();
+await loadAll();

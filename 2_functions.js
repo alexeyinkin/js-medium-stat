@@ -5,10 +5,15 @@
 // Script loading.
 
 async function loadScripts() {
+    if (scriptsLoaded) {
+        return;
+    }
+
     await loadScript('https://cdn.jsdelivr.net/npm/chart.js');
     await loadScript('https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns');
     await loadScript('https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js');
     await loadScript('https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js');
+    scriptsLoaded = true;
 }
 
 async function loadScript(url) {
@@ -96,6 +101,35 @@ function shortenString(str, maxLength) {
 
 
 // Data loading functions.
+
+async function loadAll() {
+    await loadScripts();
+    await loadAllExceptStories();
+    await loadAllStories();
+    console.log('All statistics are loaded.');
+}
+
+async function loadAllExceptStories() {
+    audienceStats = await loadAudienceStats();
+    viewsAndReads = await loadViewsAndReads();
+    storiesStats = await loadStoriesStats();
+
+    views = extractViews(viewsAndReads);
+    reads = extractReads(viewsAndReads);
+
+    followers = mergeManualAndLoadedFollowers();
+}
+
+async function loadAllStories() {
+    let i = 0;
+    for (const [id, st] of storiesStats) {
+        await loadStoryStatsIfNot(id);
+        if (i > 5) {
+            break;
+        }
+        i++;
+    }
+}
 
 async function loadAudienceStats() {
     console.log('Loading audience stats.');
@@ -550,7 +584,7 @@ async function cachedOrLoad(key, year, month, callback) {
     const result = await callback();
     window.localStorage.setItem(fullKey, JSON.stringify(result));
     console.log(`Stored in cache: ${fullKey}`);
-    await delay(1000); // Avoid abusing the API.
+    await delay(10000); // Avoid abusing the API.
     return result;
 }
 
@@ -827,6 +861,8 @@ async function loadStoryStatsIfNot(postId) {
 
     if (!newStoryStats.has(postId)) {
         newStoryStats.set(postId, await loadNewStoryStats(postId));
+    }
+    if (!oldStoryStats.has(postId)) {
         oldStoryStats.set(postId, await loadOldStoryStats(postId));
     }
 }
@@ -905,7 +941,11 @@ async function plotFollowersAndPerView() {
         [getFollowersPerViewDataset(), followersDataset],
         'followers_and_per_view',
         false,
-        makeOverallAnnotations(),
+        {
+            //...makeStoriesAnnotations(),
+            //...makeBoostAnnotations(),
+            ...makeManualEventsAnnotations(),
+        },
         {y1: y1Scale},
     );
 }
@@ -1085,8 +1125,8 @@ function getStoriesFollowersBubblesDataset() {
 
     return makeBubbleDataset(
         points,
-        followersColor,
-        followersColor + '80',
+        followersPerViewColor,
+        followersPerViewColor + '80',
         `Size = Views, Y = Followers per ${followersPerViewMultiplier === 1 ? 'View' : `${followersPerViewMultiplier} Views`}`,
     );
 }

@@ -31,19 +31,11 @@ let manualFollowerMilestones = new Map([
 //    [new Date(Date.UTC(2024,  0, 10)), 1400], //  2024-01-10
 //    [new Date(Date.UTC(2024,  0, 11)), 1500], //  2024-01-11
 //    [new Date(Date.UTC(2024,  0, 13)), 1600], //  2024-01-10
-//    [new Date(Date.UTC(2024,  0, 10)), 1300], //  2024-01-10
-//    [new Date(Date.UTC(2024,  0, 10)), 1300], //  2024-01-10
 ]);
 
 // Custom annotations at specific points in time.
 let manualEvents = new Map([
-//    [new Date(Date.UTC(2022,  3,  3)), '10 Stories'], //  2022-04-03
-//    [new Date(Date.UTC(2022,  7,  6)), '20 Stories'], //  2022-08-06
-//    [new Date(Date.UTC(2022, 11, 15)), 'Boost'],      //  2022-12-15
-//    [new Date(Date.UTC(2022, 11, 19)), '30 Stories'], //  2022-12-19
-//    [new Date(Date.UTC(2022, 5,   9)), '40 Stories'], //  2023-06-09
-//    [new Date(Date.UTC(2023,  6, 29)), 'GDE'],        //  2023-07-29
-//    [new Date(Date.UTC(2023, 11, 24)), 'Boost'],      //  2023-12-24
+    [new Date(Date.UTC(2023,  6, 29)), 'GDE'],        //  2023-07-29
 ]);
 
 let followersColor = '#ff0000';
@@ -64,9 +56,19 @@ const millisecondsInDay = 24 * 60 * 60 * 1000;
 let oldStoryStats = new Map();
 let newStoryStats = new Map();
 
+let audienceStats = undefined;
+let viewsAndReads = undefined;
+let storiesStats = undefined;
+
+let views = undefined;
+let reads = undefined;
+let followers = undefined;
+
 let annotationIndex = 0;
 let maxDaysToMarkDays = 50;
 let followersPerViewMultiplier = 1000;
 
 let maxBubbleTitleLength = 40;
 let maxBubbleRadius = 50;
+
+let scriptsLoaded = false;
