@@ -4,7 +4,10 @@
 // Plot specific charts you want:
 
 plotStoriesFollowersBubbles();
+plotStoriesFollowersBubbles(['7c9a6dd4dc7c', 'bd447ed4318e', 'a3a2ccc7a942']);
+
 plotStoriesReadRatioBubbles();
+plotStoriesReadRatioBubbles(['7c9a6dd4dc7c', 'bd447ed4318e', 'a3a2ccc7a942']);
 
 plotViews();
 plotViewsWeekAverage();

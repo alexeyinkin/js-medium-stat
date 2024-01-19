@@ -121,6 +121,14 @@ For older stories, the bubbles show followers since 2023 per views since 2023.
 plotStoriesFollowersBubbles();
 ```
 
+### Followers Bubbles, Highlight Specific Stories
+
+![Followers Bubbles, Highlight Specific Stories](examples/followers_bubbles_7c9a6dd4dc7c_bd447ed4318e_a3a2ccc7a942.png)
+
+```js
+plotStoriesFollowersBubbles(['id1', 'id2', 'id3']);
+```
+
 ### Read Ratio Bubbles
 
 ![Read Ratio Bubbles](examples/read_ratio_bubbles.png)
@@ -144,6 +152,14 @@ even for not small bubbles.
 
 ```js
 plotStoriesReadRatioBubbles();
+```
+
+### Read Ratio Bubbles, Highlight Specific Stories
+
+![Read Ratio Bubbles, Highlight Specific Stories](examples/read_ratio_bubbles_7c9a6dd4dc7c_bd447ed4318e_a3a2ccc7a942.png)
+
+```js
+plotStoriesFollowersBubbles(['id1', 'id2', 'id3']);
 ```
 
 ### Daily Views

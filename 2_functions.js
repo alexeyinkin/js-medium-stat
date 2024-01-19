@@ -1162,12 +1162,15 @@ function getStoryFollowersPerViewDataset(postId) {
     return dataset;
 }
 
-async function plotStoriesReadRatioBubbles() {
-    const dataset = getStoriesReadRatioBubblesDataset();
+async function plotStoriesReadRatioBubbles(highlightIds) {
+    highlightIds ||= [];
+    const dataset = getStoriesReadRatioBubblesDataset(highlightIds);
+
+    const highlightIdsPart = highlightIds.length > 0 ? '_' + highlightIds.join('_') : '';
 
     await plotAndDownload(
         [dataset],
-        'read_ratio_bubbles',
+        `read_ratio_bubbles${highlightIdsPart}`,
         false,
         {
             ...makeReadsAnnotations(),
@@ -1176,31 +1179,46 @@ async function plotStoriesReadRatioBubbles() {
     );
 }
 
-function getStoriesReadRatioBubblesDataset() {
+function getStoriesReadRatioBubblesDataset(highlightIds) {
     const points = [];
     const maxViews = getMaxViews();
+    const shouldHighlight = highlightIds.length > 0;
+    const borderColors = [];
+    const backgroundColors = [];
 
     for (const id in storiesStats) {
         const st = storiesStats[id];
         const views = st.totalStats.views;
         const r = Math.sqrt(views / maxViews) * maxBubbleRadius;
+        const shouldHighlightPoint = !shouldHighlight || highlightIds.includes(id);
+        const showTitle = shouldHighlightPoint;
 
         const newReadRatio = getStoryNewReadRatio(id);
-        //const oldReadRatio = views === 0 ? 0 : st.totalStats.reads / views;
+        const oldReadRatio = views === 0 ? 0 : st.totalStats.reads / views;
+        const readRatio = Math.max(newReadRatio, oldReadRatio);
 
-        points.push({
+        const point = {
             x: new Date(st.firstPublishedAt),
-            //y: Math.max(oldReadRatio, newReadRatio),
-            y: newReadRatio,
+            y: readRatio,
             r: r,
-            title: st.title,
-        });
+            title: shouldHighlightPoint ? st.title : '',
+        };
+
+        if (shouldHighlightPoint) {
+            borderColors.push(readsColor);
+            backgroundColors.push(readsColor + '80');
+        } else {
+            borderColors.push(readsColor + '60');
+            backgroundColors.push(readsColor + '30');
+        }
+
+        points.push(point);
     }
 
     return makeBubbleDataset(
         points,
-        readsColor,
-        readsColor + '80',
+        borderColors,
+        backgroundColors,
         'Size = Views, Y = Read Ratio',
     );
 }
@@ -1225,20 +1243,26 @@ function getStoryNewReadRatio(postId) {
     return views === 0 ? 0 : reads / views;
 }
 
-async function plotStoriesFollowersBubbles() {
-    const dataset = getStoriesFollowersBubblesDataset();
+async function plotStoriesFollowersBubbles(highlightIds) {
+    highlightIds ||= [];
+    const dataset = getStoriesFollowersBubblesDataset(highlightIds);
+
+    const highlightIdsPart = highlightIds.length > 0 ? '_' + highlightIds.join('_') : '';
 
     await plotAndDownload(
         [dataset],
-        'followers_bubbles',
+        `followers_bubbles${highlightIdsPart}`,
         false,
         makeBubbleLabelAnnotations(dataset.data),
     );
 }
 
-function getStoriesFollowersBubblesDataset() {
+function getStoriesFollowersBubblesDataset(highlightIds) {
     const points = [];
     const maxViews = getMaxViews();
+    const shouldHighlight = highlightIds.length > 0;
+    const borderColors = [];
+    const backgroundColors = [];
 
     for (const id in storiesStats) {
         if (!newStoryStats.has(id)) {
@@ -1249,18 +1273,31 @@ function getStoriesFollowersBubblesDataset() {
         const views = st.totalStats.views;
         const followersPerView = getStoryFollowersPerView(id);
         const r = Math.sqrt(views / maxViews) * maxBubbleRadius;
-        points.push({
+        const shouldHighlightPoint = !shouldHighlight || highlightIds.includes(id);
+        const showTitle = shouldHighlightPoint && followersPerView > 0;
+
+        const point = {
             x: new Date(st.firstPublishedAt),
             y: followersPerView * followersPerViewMultiplier,
             r: r,
-            title: followersPerView === 0 ? '' : st.title,
-        });
+            title: shouldHighlightPoint ? st.title : '',
+        };
+
+        if (shouldHighlightPoint) {
+            borderColors.push(followersPerViewColor);
+            backgroundColors.push(followersPerViewColor + '80');
+        } else {
+            borderColors.push(followersPerViewColor + '60');
+            backgroundColors.push(followersPerViewColor + '30');
+        }
+
+        points.push(point);
     }
 
     return makeBubbleDataset(
         points,
-        followersPerViewColor,
-        followersPerViewColor + '80',
+        borderColors,
+        backgroundColors,
         `Size = Views, Y = Followers per ${followersPerViewMultiplier === 1 ? 'View' : `${followersPerViewMultiplier} Views`}`,
     );
 }
