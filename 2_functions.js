@@ -1280,7 +1280,7 @@ function getStoriesFollowersBubblesDataset(highlightIds) {
             x: new Date(st.firstPublishedAt),
             y: followersPerView * followersPerViewMultiplier,
             r: r,
-            title: shouldHighlightPoint ? st.title : '',
+            title: showTitle ? st.title : '',
         };
 
         if (shouldHighlightPoint) {
