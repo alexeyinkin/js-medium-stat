@@ -212,6 +212,44 @@ async function loadMonthViewsAndReads(year, month) {
 
     console.log(`Loading view and read stats for ${effectiveYear}-${effectiveMonth}, timestamps ${startTime}-${endTime}`);
 
+// [{"operationName":"MonthlyStatsAndChartQuery","variables":{"username":"alexey.inkin","input":{"startTime":1706745600000,"endTime":1706832000000}},"query":"query MonthlyStatsAndChartQuery($username: ID!, $input: UserPostsAggregateStatsInput!) {\n  user(username: $username) {\n    id\n    postsAggregateTimeseriesStats(input: $input) {\n      __typename\n      ... on AggregatePostTimeseriesStats {\n        totalStats {\n          viewers\n          readers\n          __typename\n        }\n        points {\n          ...MonthlyChart_postStatsPoint\n          __typename\n        }\n        __typename\n      }\n    }\n    __typename\n  }\n}\n\nfragment MonthlyChart_postStatsPoint on PostStatsPoint {\n  timestamp\n  stats {\n    total {\n      viewers\n      readers\n      __typename\n    }\n    __typename\n  }\n  __typename\n}\n"}]
+    const query = `
+query MonthlyStatsAndChartQuery($username: ID!, $input: UserPostsAggregateStatsInput!) {
+    user(username: $username) {
+        id
+        postsAggregateTimeseriesStats(input: $input) {
+            __typename
+            ... on AggregatePostTimeseriesStats {
+                totalStats {
+                    viewers
+                    readers
+                    __typename
+                }
+                points {
+                    ...MonthlyChart_postStatsPoint
+                    __typename
+                }
+                __typename
+            }
+        }
+        __typename
+    }
+}
+
+fragment MonthlyChart_postStatsPoint on PostStatsPoint {
+    timestamp
+    stats {
+        total {
+            viewers
+            readers
+            __typename
+        }
+        __typename
+    }
+    __typename
+}
+`;
+
 	const response = await fetch("https://medium.com/_/graphql", {
 	    "headers": {
     	    "content-type": "application/json",
@@ -225,7 +263,7 @@ async function loadMonthViewsAndReads(year, month) {
     				"endTime": ${endTime}
     			}
     		},
-    		"query": "query MonthlyStatsAndChartQuery($username: ID!, $input: UserPostsAggregateStatsInput!) {\\n  user(username: $username) {\\n    id\\n    postsAggregateTimeseriesStats(input: $input) {\\n      __typename\\n      ... on UserPostTimeseriesStats {\\n        totalStats {\\n          viewers\\n          readers\\n          __typename\\n        }\\n        points {\\n          ...MonthlyChart_postStatsPoint\\n          __typename\\n        }\\n        __typename\\n      }\\n    }\\n    __typename\\n  }\\n}\\n\\nfragment MonthlyChart_postStatsPoint on PostStatsPoint {\\n  timestamp\\n  stats {\\n    total {\\n      viewers\\n      readers\\n      __typename\\n    }\\n    __typename\\n  }\\n  __typename\\n}\\n"
+    		"query": "${query.replaceAll('\n', '\\n')}"
     	}]`,
 	    "method": "POST",
 	});
@@ -277,6 +315,158 @@ async function loadStoriesStats() {
 async function loadStoriesStatsPage(after) {
     console.log(`Loading stories lifetime stats after: ${after}`);
 
+    const query = `
+query LifetimeStoriesStatsQuery($username: ID!, $first: Int!, $after: String!, $orderBy: UserPostsOrderBy, $filter: UserPostsFilter) {
+    user(username: $username) {
+        id
+        postsConnection(
+            first: $first
+            after: $after
+            orderBy: $orderBy
+            filter: $filter
+        ) {
+            edges {
+                node {
+                    ...LifetimeStoriesStats_post
+                    __typename
+                }
+                __typename
+            }
+            pageInfo {
+                endCursor
+                hasNextPage
+                __typename
+            }
+            __typename
+        }
+        __typename
+    }
+}
+
+fragment LifetimeStoriesStats_post on Post {
+    id
+    ...StoriesStatsTable_post
+    ...MobileStoriesStatsTable_post
+    __typename
+}
+
+fragment StoriesStatsTable_post on Post {
+    ...StoriesStatsTableRow_post
+    __typename
+    id
+}
+
+fragment StoriesStatsTableRow_post on Post {
+    id
+    ...TablePostInfos_post
+    firstPublishedAt
+    milestones {
+        boostedAt
+        __typename
+    }
+    isLocked
+    totalStats {
+        views
+        reads
+        __typename
+    }
+    earnings {
+        total {
+            currencyCode
+            nanos
+            units
+            __typename
+        }
+        __typename
+    }
+    __typename
+}
+
+fragment TablePostInfos_post on Post {
+    id
+    title
+    firstPublishedAt
+    readingTime
+    isLocked
+    visibility
+    ...usePostUrl_post
+    ...Star_post
+    __typename
+}
+
+fragment usePostUrl_post on Post {
+    id
+    creator {
+        ...userUrl_user
+        __typename
+        id
+    }
+    collection {
+        id
+        domain
+        slug
+        __typename
+    }
+    isSeries
+    mediumUrl
+    sequence {
+        slug
+        __typename
+    }
+    uniqueSlug
+    __typename
+}
+
+fragment userUrl_user on User {
+    __typename
+    id
+    customDomainState {
+        live {
+            domain
+            __typename
+        }
+        __typename
+    }
+    hasSubdomain
+    username
+}
+
+fragment Star_post on Post {
+    id
+    creator {
+        id
+        __typename
+    }
+    __typename
+}
+
+fragment MobileStoriesStatsTable_post on Post {
+    id
+    ...TablePostInfos_post
+    firstPublishedAt
+    milestones {
+        boostedAt
+        __typename
+    }
+    isLocked
+    totalStats {
+        reads
+        views
+        __typename
+    }
+    earnings {
+        total {
+            currencyCode
+            nanos
+            units
+            __typename
+        }
+        __typename
+    }
+    __typename
+}
+`;
+
     // TODO: Try more than 10 in a batch.
 	const response = await fetch("https://medium.com/_/graphql", {
 	    "headers": {
@@ -291,7 +481,7 @@ async function loadStoriesStatsPage(after) {
     			"orderBy": {"publishedAt": "DESC"},
     			"filter": {"published": true}
     		},
-    		"query": "query LifetimeStoriesStatsQuery($username: ID!, $first: Int!, $after: String!, $orderBy: UserPostsOrderBy, $filter: UserPostsFilter) {\\n  user(username: $username) {\\n    id\\n    postsConnection(\\n      first: $first\\n      after: $after\\n      orderBy: $orderBy\\n      filter: $filter\\n    ) {\\n      edges {\\n        node {\\n          ...LifetimeStoriesStats_post\\n          __typename\\n        }\\n        __typename\\n      }\\n      pageInfo {\\n        endCursor\\n        hasNextPage\\n        __typename\\n      }\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\\nfragment LifetimeStoriesStats_post on Post {\\n  id\\n  ...StoriesStatsTable_post\\n  ...MobileStoriesStatsTable_post\\n  __typename\\n}\\n\\nfragment StoriesStatsTable_post on Post {\\n  ...StoriesStatsTableRow_post\\n  __typename\\n  id\\n}\\n\\nfragment StoriesStatsTableRow_post on Post {\\n  id\\n  ...TablePostInfos_post\\n  firstPublishedAt\\n  milestones {\\n    boostedAt\\n    __typename\\n  }\\n  isLocked\\n  totalStats {\\n    views\\n    reads\\n    __typename\\n  }\\n  earnings {\\n    total {\\n      currencyCode\\n      nanos\\n      units\\n      __typename\\n    }\\n    __typename\\n  }\\n  __typename\\n}\\n\\nfragment TablePostInfos_post on Post {\\n  id\\n  title\\n  firstPublishedAt\\n  readingTime\\n  isLocked\\n  visibility\\n  ...usePostUrl_post\\n  ...Star_post\\n  __typename\\n}\\n\\nfragment usePostUrl_post on Post {\\n  id\\n  creator {\\n    ...userUrl_user\\n    __typename\\n    id\\n  }\\n  collection {\\n    id\\n    domain\\n    slug\\n    __typename\\n  }\\n  isSeries\\n  mediumUrl\\n  sequence {\\n    slug\\n    __typename\\n  }\\n  uniqueSlug\\n  __typename\\n}\\n\\nfragment userUrl_user on User {\\n  __typename\\n  id\\n  customDomainState {\\n    live {\\n      domain\\n      __typename\\n    }\\n    __typename\\n  }\\n  hasSubdomain\\n  username\\n}\\n\\nfragment Star_post on Post {\\n  id\\n  creator {\\n    id\\n    __typename\\n  }\\n  __typename\\n}\\n\\nfragment MobileStoriesStatsTable_post on Post {\\n  id\\n  ...TablePostInfos_post\\n  firstPublishedAt\\n  milestones {\\n    boostedAt\\n    __typename\\n  }\\n  isLocked\\n  totalStats {\\n    reads\\n    views\\n    __typename\\n  }\\n  earnings {\\n    total {\\n      currencyCode\\n      nanos\\n      units\\n      __typename\\n    }\\n    __typename\\n  }\\n  __typename\\n}\\n"
+    		"query": "${query.replaceAll('\n', '\\n')}"
     	}]`,
 	    "method": "POST",
 	});
@@ -335,6 +525,47 @@ async function loadNewYearStoryStats(postId, year) {
 
     console.log(`Loading new stats for story ${postId} ${st.title}, ${year}, timestamps ${startTime}-${endTime}`);
 
+    const query = `
+query useStatsPostNewChartDataQuery($postId: ID!, $startAt: Long!, $endAt: Long!, $postStatsDailyBundleInput: PostStatsDailyBundleInput!) {
+    post(id: $postId) {
+        id
+        earnings {
+            dailyEarnings(startAt: $startAt, endAt: $endAt) {
+                ...newBucketTimestamps_dailyPostEarning
+                __typename
+            }
+            __typename
+        }
+        __typename
+    }
+    postStatsDailyBundle(postStatsDailyBundleInput: $postStatsDailyBundleInput) {
+        buckets {
+            ...newBucketTimestamps_postStatsDailyBundleBucket
+            __typename
+        }
+        __typename
+    }
+}
+
+fragment newBucketTimestamps_dailyPostEarning on DailyPostEarning {
+    periodStartedAt
+    amount
+    __typename
+}
+
+fragment newBucketTimestamps_postStatsDailyBundleBucket on PostStatsDailyBundleBucket {
+    dayStartsAt
+    membershipType
+    readersThatReadCount
+    readersThatViewedCount
+    readersThatClappedCount
+    readersThatRepliedCount
+    readersThatHighlightedCount
+    readersThatInitiallyFollowedAuthorFromThisPostCount
+    __typename
+}
+`;
+
 	const response = await fetch("https://medium.com/_/graphql", {
 	    "headers": {
     	    "content-type": "application/json",
@@ -351,7 +582,7 @@ async function loadNewYearStoryStats(postId, year) {
                     "toDayStartsAt": ${endTime}
                 }
     		},
-    		"query": "query useStatsPostNewChartDataQuery($postId: ID!, $startAt: Long!, $endAt: Long!, $postStatsDailyBundleInput: PostStatsDailyBundleInput!) {\\n  post(id: $postId) {\\n    id\\n    earnings {\\n      dailyEarnings(startAt: $startAt, endAt: $endAt) {\\n        ...newBucketTimestamps_dailyPostEarning\\n        __typename\\n      }\\n      __typename\\n    }\\n    __typename\\n  }\\n  postStatsDailyBundle(postStatsDailyBundleInput: $postStatsDailyBundleInput) {\\n    buckets {\\n      ...newBucketTimestamps_postStatsDailyBundleBucket\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\\nfragment newBucketTimestamps_dailyPostEarning on DailyPostEarning {\\n  periodStartedAt\\n  amount\\n  __typename\\n}\\n\\nfragment newBucketTimestamps_postStatsDailyBundleBucket on PostStatsDailyBundleBucket {\\n  dayStartsAt\\n  membershipType\\n  readersThatReadCount\\n  readersThatViewedCount\\n  readersThatClappedCount\\n  readersThatRepliedCount\\n  readersThatHighlightedCount\\n  readersThatInitiallyFollowedAuthorFromThisPostCount\\n  __typename\\n}\\n"
+    		"query": "${query.replaceAll('\n', '\\n')}"
     	}]`,
 	    "method": "POST",
 	});
